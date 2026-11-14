@@ -1,4 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MyMail</string>
+    <string name="home_pending">邮件列表还没接上</string>
+    <string name="open_settings">设置</string>
+    <string name="settings_back">返回</string>
+    <string name="settings_deepseek_section">DeepSeek</string>
+    <string name="settings_deepseek_key">密钥</string>
+    <string name="settings_deepseek_model">模型名</string>
+    <string name="settings_deepseek_model_hint">留空时使用 deepseek-flash。分类时关闭思考。</string>
+    <string name="settings_google_section">Google 登录</string>
+    <string name="settings_client_id">OAuth 客户端 ID</string>
+    <string name="settings_client_id_hint">一般以 .apps.googleusercontent.com 结尾</string>
+    <string name="settings_google_help">在 Google Cloud 创建类型为「桌面应用」的客户端。同意屏幕发布为正式版，范围加上 openid、email、profile 和 https://mail.google.com/。把客户端 ID 粘贴到上面。不需要填写客户端密钥，也不需要登记签名证书。登录时走本机回环地址 http://127.0.0.1，桌面应用不必为每个端口单独登记。授权页如果出现「未验证的应用」，确认后继续。没填 ID 时不能添加 Gmail。</string>
+    <string name="settings_save">保存</string>
+    <string name="settings_saved">已保存</string>
+    <string name="settings_show">显示</string>
+    <string name="settings_hide">隐藏</string>
 </resources>
