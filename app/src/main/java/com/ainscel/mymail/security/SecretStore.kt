@@ -85,17 +85,20 @@ class SecretStore(context: Context) {
         val deepSeekApiKey: String = "",
         val deepSeekModel: String = DEFAULT_MODEL,
         val googleClientId: String = "",
+        val googleClientSecret: String = "",
     ) {
         fun normalized(): Secrets = copy(
             deepSeekApiKey = deepSeekApiKey.trim(),
             deepSeekModel = deepSeekModel.trim().ifBlank { DEFAULT_MODEL },
             googleClientId = googleClientId.trim(),
+            googleClientSecret = googleClientSecret.trim(),
         )
 
         fun toJson(): String = JSONObject()
             .put(JSON_API_KEY, deepSeekApiKey)
             .put(JSON_MODEL, deepSeekModel)
             .put(JSON_CLIENT_ID, googleClientId)
+            .put(JSON_CLIENT_SECRET, googleClientSecret)
             .toString()
 
         companion object {
@@ -105,6 +108,7 @@ class SecretStore(context: Context) {
                     deepSeekApiKey = json.optString(JSON_API_KEY),
                     deepSeekModel = json.optString(JSON_MODEL).ifBlank { DEFAULT_MODEL },
                     googleClientId = json.optString(JSON_CLIENT_ID),
+                    googleClientSecret = json.optString(JSON_CLIENT_SECRET),
                 ).normalized()
             }
         }
@@ -121,5 +125,6 @@ class SecretStore(context: Context) {
         private const val JSON_API_KEY = "deepSeekApiKey"
         private const val JSON_MODEL = "deepSeekModel"
         private const val JSON_CLIENT_ID = "googleClientId"
+        private const val JSON_CLIENT_SECRET = "googleClientSecret"
     }
 }

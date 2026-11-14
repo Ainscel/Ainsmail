@@ -52,7 +52,9 @@ fun SettingsScreen(
     var apiKey by rememberSaveable { mutableStateOf("") }
     var model by rememberSaveable { mutableStateOf(SecretStore.DEFAULT_MODEL) }
     var clientId by rememberSaveable { mutableStateOf("") }
+    var clientSecret by rememberSaveable { mutableStateOf("") }
     var revealKey by rememberSaveable { mutableStateOf(false) }
+    var revealClientSecret by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(store) {
         if (loaded) return@LaunchedEffect
@@ -60,6 +62,7 @@ fun SettingsScreen(
         apiKey = secrets.deepSeekApiKey
         model = secrets.deepSeekModel
         clientId = secrets.googleClientId
+        clientSecret = secrets.googleClientSecret
         loaded = true
     }
 
@@ -123,6 +126,29 @@ fun SettingsScreen(
                 supportingText = { Text(stringResource(R.string.settings_client_id_hint)) },
                 singleLine = true,
             )
+            OutlinedTextField(
+                value = clientSecret,
+                onValueChange = { clientSecret = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.settings_client_secret)) },
+                supportingText = { Text(stringResource(R.string.settings_client_secret_hint)) },
+                singleLine = true,
+                visualTransformation = if (revealClientSecret) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                trailingIcon = {
+                    TextButton(onClick = { revealClientSecret = !revealClientSecret }) {
+                        Text(
+                            stringResource(
+                                if (revealClientSecret) R.string.settings_hide else R.string.settings_show,
+                            ),
+                        )
+                    }
+                },
+            )
             Text(
                 text = stringResource(R.string.settings_google_help),
                 style = MaterialTheme.typography.bodyMedium,
@@ -138,6 +164,7 @@ fun SettingsScreen(
                                     deepSeekApiKey = apiKey,
                                     deepSeekModel = model,
                                     googleClientId = clientId,
+                                    googleClientSecret = clientSecret,
                                 ),
                             )
                             store.read()
@@ -145,6 +172,7 @@ fun SettingsScreen(
                         apiKey = saved.deepSeekApiKey
                         model = saved.deepSeekModel
                         clientId = saved.googleClientId
+                        clientSecret = saved.googleClientSecret
                         snackbarHostState.showSnackbar(savedMessage)
                     }
                 },
