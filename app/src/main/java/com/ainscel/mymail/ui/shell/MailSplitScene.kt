@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -42,20 +44,43 @@ import androidx.navigation3.scene.Scene
 import androidx.navigation3.scene.SceneStrategy
 import androidx.navigation3.scene.SceneStrategyScope
 import com.ainscel.mymail.ui.detail.EmptyDetail
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** 宽屏分栏里，正文不需要自己再画返回。窄屏时这个值是 true。 */
 val LocalDetailHandlesBack = staticCompositionLocalOf { true }
 
+/**
+ * 宽屏才提供。窄屏是 null，正文不画全屏按钮。
+ * active 为 true 时正文已经铺满，或正在收向左边缘。
+ */
+val LocalDetailFullscreen = staticCompositionLocalOf<DetailFullscreenControls?> { null }
+
+class DetailFullscreenControls(
+    val active: Boolean,
+    val toggle: () -> Unit,
+)
+
 private val WideThreshold = 640.dp
-private const val MIN_LIST_FRACTION = 0.30f
+private const val MIN_LIST_FRACTION = 0.35f
 private const val MAX_LIST_FRACTION = 0.60f
+private val HandleWidth = 20.dp
+private val EdgeHandleWidth = 36.dp
+
+/** 手指进入屏幕左缘这一带，才取消阻尼并把正文收成全屏。 */
+private val FullscreenFingerEdge = 32.dp
+
+private val SplitSpring = spring<Float>(
+    dampingRatio = 0.86f,
+    stiffness = Spring.StiffnessMediumLow,
+)
 
 /**
  * 窗口放得下大约 640dp 时并排。
- * 列表默认占 40%。拖动时列表停在 30% 到 60%。
+ * 列表默认占 40%。拖动时列表停在 35% 到 60%。
  * 再往外拖，两边内容宽度不动，分界线盖住旁边的内容，松手弹回。
+ * 右侧开着邮件、手指向左滑到屏幕左缘时，阻尼取消，分界线收到最左边，正文全屏。
  */
 class MailSplitStrategy(
     private val isWide: Boolean,
@@ -96,7 +121,10 @@ data class MailSplitScene(
     override val entries: List<NavEntry<NavKey>> = listOfNotNull(listEntry, detailEntry)
 
     override val content: @Composable () -> Unit = {
-        MailSplitLayout(preferredFraction = preferredFraction) {
+        MailSplitLayout(
+            preferredFraction = preferredFraction,
+            detailOpen = detailEntry != null,
+        ) {
             list { listEntry.Content() }
             detail {
                 CompositionLocalProvider(LocalDetailHandlesBack provides false) {
@@ -119,86 +147,172 @@ fun isWideWindow(width: androidx.compose.ui.unit.Dp): Boolean = width >= WideThr
 @Composable
 private fun MailSplitLayout(
     preferredFraction: MutableFloatState,
+    detailOpen: Boolean,
     content: SplitSlots.() -> Unit,
 ) {
     val slots = SplitSlots().apply(content)
-    val extra = remember { mutableFloatStateOf(0f) }
+    val state = remember(preferredFraction) { SplitDragState(preferredFraction) }
     val scope = rememberCoroutineScope()
-    var settle by remember { mutableStateOf<Job?>(null) }
+    SideEffect { state.detailOpen = detailOpen }
+    LaunchedEffect(detailOpen) {
+        if (!detailOpen && (state.locked || state.fullscreen.floatValue > 0f)) {
+            state.stop()
+            state.locked = false
+            state.fullscreen.floatValue = 0f
+            state.extra.floatValue = 0f
+        }
+    }
+    val controls = DetailFullscreenControls(
+        active = state.locked || state.fullscreen.floatValue > 0.5f,
+        toggle = {
+            val activeNow = state.locked || state.fullscreen.floatValue > 0.5f
+            if (activeNow) {
+                state.locked = false
+                if (state.fullscreen.floatValue > 0.98f) state.extra.floatValue = 0f
+                state.animateTo(scope, 0f)
+            } else if (state.detailOpen) {
+                state.locked = true
+                state.animateTo(scope, 1f)
+            }
+        },
+    )
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val total = constraints.maxWidth.toFloat().coerceAtLeast(1f)
-        val fraction = preferredFraction.floatValue.coerceIn(MIN_LIST_FRACTION, MAX_LIST_FRACTION)
-        val contentWidth = fraction * total
-        val dividerX = (contentWidth + extra.floatValue).coerceIn(0f, total)
-        val handleWidth = 20.dp
-        val handlePx = with(density) { handleWidth.toPx() }
+        val listWidth = state.listWidthPx(total)
+        val dividerX = state.dividerPx(total)
+        val handlePx = with(density) { HandleWidth.toPx() }
+        val edgeHandlePx = with(density) { EdgeHandleWidth.toPx() }
+        val edgePx = with(density) { FullscreenFingerEdge.toPx() }
         val rubberRange = with(density) { 180.dp.toPx() }
-        Box(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxSize()) {
-                Box(
-                    Modifier
-                        .width(with(density) { contentWidth.toDp() })
-                        .fillMaxHeight()
-                        .clipToBounds(),
-                ) {
-                    slots.list()
+        val handle = placeHandle(dividerX, handlePx, edgeHandlePx)
+        CompositionLocalProvider(LocalDetailFullscreen provides controls) {
+            Box(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxSize()) {
+                    Box(
+                        Modifier
+                            .width(with(density) { listWidth.toDp() })
+                            .fillMaxHeight()
+                            .clipToBounds(),
+                    ) {
+                        slots.list()
+                    }
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clipToBounds(),
+                    ) {
+                        slots.detail()
+                    }
                 }
                 Box(
                     Modifier
-                        .weight(1f)
+                        .zIndex(1f)
+                        .offset { IntOffset(handle.left.roundToInt(), 0) }
+                        .width(with(density) { handle.width.toDp() })
                         .fillMaxHeight()
-                        .clipToBounds(),
-                ) {
-                    slots.detail()
-                }
-            }
-            Box(
-                Modifier
-                    .zIndex(1f)
-                    .offset { IntOffset((dividerX - handlePx / 2f).roundToInt(), 0) }
-                    .width(handleWidth)
-                    .fillMaxHeight()
-                    .pointerInput(total, rubberRange) {
-                        var dragX = contentWidth
-                        detectHorizontalDragGestures(
-                            onDragStart = {
-                                settle?.cancel()
-                                val shown = preferredFraction.floatValue
-                                    .coerceIn(MIN_LIST_FRACTION, MAX_LIST_FRACTION) * total
-                                dragX = shown + extra.floatValue
-                            },
-                            onDragEnd = { settle = springExtraBack(scope, extra) },
-                            onDragCancel = { settle = springExtraBack(scope, extra) },
-                            onHorizontalDrag = { _, delta ->
-                                dragX = (dragX + delta).coerceIn(-rubberRange, total + rubberRange)
-                                val minPx = MIN_LIST_FRACTION * total
-                                val maxPx = MAX_LIST_FRACTION * total
-                                when {
-                                    dragX < minPx -> {
-                                        preferredFraction.floatValue = MIN_LIST_FRACTION
-                                        extra.floatValue = resistPastEdge(dragX - minPx, rubberRange)
+                        .pointerInput(total, rubberRange, edgePx, handlePx, edgeHandlePx) {
+                            var dragX = 0f
+                            var fingerX = 0f
+                            var committed = false
+                            var restoring = false
+                            var travel = 0f
+                            val minPx = MIN_LIST_FRACTION * total
+                            val maxPx = MAX_LIST_FRACTION * total
+                            val slop = viewConfiguration.touchSlop
+                            fun finish() {
+                                if (committed) {
+                                    if (state.motion == null && state.fullscreen.floatValue < 1f) {
+                                        state.animateTo(scope, 1f)
                                     }
-                                    dragX > maxPx -> {
-                                        preferredFraction.floatValue = MAX_LIST_FRACTION
-                                        extra.floatValue = resistPastEdge(dragX - maxPx, rubberRange)
-                                    }
-                                    else -> {
-                                        preferredFraction.floatValue = dragX / total
-                                        extra.floatValue = 0f
-                                    }
+                                    return
                                 }
-                            },
-                        )
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    Modifier
-                        .width(1.dp)
-                        .fillMaxHeight()
-                        .background(MaterialTheme.colorScheme.outlineVariant),
-                )
+                                if (restoring && travel < slop) {
+                                    state.locked = true
+                                    if (state.fullscreen.floatValue < 1f) state.animateTo(scope, 1f)
+                                    return
+                                }
+                                if (restoring && state.fullscreen.floatValue > 0.01f && dragX < minPx) {
+                                    state.locked = false
+                                    state.extra.floatValue = 0f
+                                    state.animateTo(scope, 0f)
+                                    return
+                                }
+                                state.springExtraHome(scope)
+                            }
+                            detectHorizontalDragGestures(
+                                onDragStart = { offset ->
+                                    state.stop()
+                                    committed = false
+                                    travel = 0f
+                                    val shown = state.dividerPx(total)
+                                    val placement = placeHandle(shown, handlePx, edgeHandlePx)
+                                    fingerX = placement.left + offset.x
+                                    dragX = shown
+                                    restoring = state.fullscreen.floatValue > 0.01f
+                                },
+                                onDragEnd = { finish() },
+                                onDragCancel = { finish() },
+                                onHorizontalDrag = { _, delta ->
+                                    if (committed) return@detectHorizontalDragGestures
+                                    travel += abs(delta)
+                                    val previousFinger = fingerX
+                                    fingerX += delta
+                                    dragX = (dragX + delta).coerceIn(-rubberRange, total + rubberRange)
+                                    // 从右缘跨进左缘这一带，并且右侧开着邮件，才收成全屏。
+                                    val crossedIntoEdge = state.detailOpen &&
+                                        dragX < minPx &&
+                                        fingerX <= edgePx &&
+                                        previousFinger > edgePx
+                                    if (crossedIntoEdge) {
+                                        committed = true
+                                        restoring = false
+                                        state.locked = true
+                                        state.animateTo(scope, 1f)
+                                        return@detectHorizontalDragGestures
+                                    }
+                                    if (restoring && dragX < minPx) {
+                                        val base = state.basePx(total).coerceAtLeast(1f)
+                                        val shown = dragX.coerceAtLeast(0f)
+                                        state.extra.floatValue = 0f
+                                        state.fullscreen.floatValue = (1f - shown / base).coerceIn(0f, 1f)
+                                        state.locked = state.fullscreen.floatValue > 0.98f
+                                        return@detectHorizontalDragGestures
+                                    }
+                                    if (restoring) {
+                                        restoring = false
+                                        state.locked = false
+                                        state.fullscreen.floatValue = 0f
+                                        state.extra.floatValue = 0f
+                                    }
+                                    when {
+                                        dragX < minPx -> {
+                                            state.preferred.floatValue = MIN_LIST_FRACTION
+                                            state.extra.floatValue = resistPastEdge(dragX - minPx, rubberRange)
+                                        }
+                                        dragX > maxPx -> {
+                                            state.preferred.floatValue = MAX_LIST_FRACTION
+                                            state.extra.floatValue = resistPastEdge(dragX - maxPx, rubberRange)
+                                        }
+                                        else -> {
+                                            state.preferred.floatValue = dragX / total
+                                            state.extra.floatValue = 0f
+                                        }
+                                    }
+                                },
+                            )
+                        },
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    Box(
+                        Modifier
+                            .offset { IntOffset((dividerX - handle.left).roundToInt(), 0) }
+                            .width(1.dp)
+                            .fillMaxHeight()
+                            .background(MaterialTheme.colorScheme.outlineVariant),
+                    )
+                }
             }
         }
     }
@@ -212,17 +326,82 @@ private fun resistPastEdge(pastPx: Float, rangePx: Float): Float {
     return sign * rangePx * (1f - 1f / (distance / rangePx + 1f))
 }
 
-private fun springExtraBack(
-    scope: kotlinx.coroutines.CoroutineScope,
-    extra: MutableFloatState,
-): Job {
-    val start = extra.floatValue
-    return scope.launch {
-        Animatable(start).animateTo(
-            0f,
-            spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium),
-        ) {
-            extra.floatValue = value
+private data class HandlePlacement(val left: Float, val width: Float)
+
+/** 分界线贴左缘时，触摸条留在屏幕内，避免只剩一半在外面。 */
+private fun placeHandle(dividerX: Float, normalPx: Float, edgePx: Float): HandlePlacement {
+    val pin = dividerX <= normalPx / 2f
+    val width = if (pin) edgePx else normalPx
+    val left = if (pin) 0f else dividerX - width / 2f
+    return HandlePlacement(left, width)
+}
+
+private class SplitDragState(
+    val preferred: MutableFloatState,
+) {
+    val extra = mutableFloatStateOf(0f)
+    val fullscreen = mutableFloatStateOf(0f)
+    var locked by mutableStateOf(false)
+    var detailOpen: Boolean = false
+    var motion: Job? = null
+
+    fun stop() {
+        motion?.cancel()
+        motion = null
+    }
+
+    fun basePx(total: Float): Float {
+        return preferred.floatValue.coerceIn(MIN_LIST_FRACTION, MAX_LIST_FRACTION) * total
+    }
+
+    fun listWidthPx(total: Float): Float {
+        return basePx(total) * (1f - fullscreen.floatValue.coerceIn(0f, 1f))
+    }
+
+    fun dividerPx(total: Float): Float {
+        val progress = fullscreen.floatValue.coerceIn(0f, 1f)
+        return ((basePx(total) + extra.floatValue) * (1f - progress)).coerceIn(0f, total)
+    }
+
+    /** 0 是正常分栏，1 是正文铺满、分界线贴在屏幕左缘。 */
+    fun animateTo(scope: CoroutineScope, target: Float) {
+        stop()
+        val start = fullscreen.floatValue
+        motion = scope.launch {
+            Animatable(start).animateTo(target.coerceIn(0f, 1f), SplitSpring) {
+                fullscreen.floatValue = value.coerceIn(0f, 1f)
+            }
+            fullscreen.floatValue = target.coerceIn(0f, 1f)
+            if (target >= 1f) {
+                extra.floatValue = 0f
+                locked = true
+                return@launch
+            }
+            // 从越界位置收回时，先跟着进度回到分界，再把阻力位移弹回限度内。
+            val extraStart = extra.floatValue
+            if (abs(extraStart) < 0.5f) {
+                extra.floatValue = 0f
+                return@launch
+            }
+            Animatable(extraStart).animateTo(0f, SplitSpring) {
+                extra.floatValue = value
+            }
+            extra.floatValue = 0f
+        }
+    }
+
+    fun springExtraHome(scope: CoroutineScope) {
+        stop()
+        val start = extra.floatValue
+        if (abs(start) < 0.5f) {
+            extra.floatValue = 0f
+            return
+        }
+        motion = scope.launch {
+            Animatable(start).animateTo(0f, SplitSpring) {
+                extra.floatValue = value
+            }
+            extra.floatValue = 0f
         }
     }
 }

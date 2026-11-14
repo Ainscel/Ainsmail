@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -48,6 +49,8 @@ import com.ainscel.mymail.model.MailType
 import com.ainscel.mymail.model.ReadFilter
 import com.ainscel.mymail.model.TagPool
 import com.ainscel.mymail.ui.mailbox.MailboxViewModel
+import com.ainscel.mymail.ui.shell.MailCapsuleHeight
+import com.ainscel.mymail.ui.shell.MailChromeInset
 import com.ainscel.mymail.ui.shell.OverlayController
 import com.ainscel.mymail.ui.shell.horizontalDragOrScroll
 
@@ -174,7 +177,7 @@ fun MailListPane(
                 onSelect = { mailbox.typeFilter = it },
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(12.dp)
+                    .padding(MailChromeInset)
                     .then(
                         if (mailbox.capsuleExpanded) {
                             Modifier.fillMaxWidth()
@@ -353,7 +356,7 @@ private fun TypeCapsule(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.height(MailCapsuleHeight),
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         shadowElevation = 2.dp,

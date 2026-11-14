@@ -70,13 +70,16 @@ fun MailApp(
     val snackbarHostState = remember { SnackbarHostState() }
     val undoLabel = stringResource(R.string.undo)
     val originalPending = stringResource(R.string.detail_original_pending)
+    val editPending = stringResource(R.string.detail_edit_pending)
+    val deletedMessage = stringResource(R.string.list_deleted)
     val loginPending = stringResource(R.string.account_add_login_pending)
     val groupPending = stringResource(R.string.account_add_group_pending)
     val allAccounts = stringResource(R.string.account_all)
     var addDialog by rememberSaveable { mutableStateOf(false) }
     val splitFraction = rememberSaveable { mutableFloatStateOf(0.40f) }
-    // 上一版默认是 34%，已经存下来的比例改到现在的 40%。
+    // 上一版默认是 34%，已经存下来的比例改到现在的 40%。左栏下限是 35%。
     if (splitFraction.floatValue == 0.34f) splitFraction.floatValue = 0.40f
+    if (splitFraction.floatValue < 0.35f) splitFraction.floatValue = 0.35f
     val context = LocalContext.current
 
     LaunchedEffect(mailbox.accountId, mailbox.folder, mailbox.mails.toList()) {
@@ -137,6 +140,11 @@ fun MailApp(
                                 accountName = mail?.let { mailbox.account(it.accountId)?.name }.orEmpty(),
                                 onClose = { backStack.removeAll { it is MailDetailRoute } },
                                 onOriginalLayout = { mailbox.message(originalPending) },
+                                onEdit = { mailbox.message(editPending) },
+                                onDelete = {
+                                    mailbox.deleteMail(route.mailId, deletedMessage)
+                                    backStack.removeAll { it is MailDetailRoute }
+                                },
                             )
                         }
                         entry<SettingsRoute> {

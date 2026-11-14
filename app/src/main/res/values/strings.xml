@@ -58,6 +58,10 @@
     <string name="detail_missing">这封邮件不在了</string>
     <string name="detail_original">按原版式查看</string>
     <string name="detail_original_pending">原版式还没接上，先看这段文字</string>
+    <string name="detail_edit">编辑</string>
+    <string name="detail_edit_pending">编辑还没接上</string>
+    <string name="detail_fullscreen">全屏</string>
+    <string name="detail_exit_fullscreen">退出全屏</string>
     <string name="compose_title">写信</string>
     <string name="compose_pending">发信尚未接入</string>
     <string name="compose_reply">回复：%1$s</string>

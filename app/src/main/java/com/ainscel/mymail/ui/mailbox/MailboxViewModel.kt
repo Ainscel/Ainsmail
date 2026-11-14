@@ -83,6 +83,10 @@ class MailboxViewModel : ViewModel() {
         mutateFolders(selectedIds.toSet(), Folder.Trash, message)
     }
 
+    fun deleteMail(id: String, message: String) {
+        mutateFolders(setOf(id), Folder.Trash, message)
+    }
+
     fun archiveSelected(message: String) {
         mutateFolders(selectedIds.toSet(), Folder.Archive, message)
     }

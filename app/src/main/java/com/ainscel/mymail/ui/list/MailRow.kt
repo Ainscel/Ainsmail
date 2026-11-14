@@ -105,12 +105,15 @@ fun MailRow(
                             if (mail.unread) MaterialTheme.colorScheme.primary else Color.Transparent,
                         ),
                 )
+                // 姓名过长时右端淡出，标签和时间留在淡出区外面，保持完整。
                 Text(
                     text = mail.fromName,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fadeEnd(background),
                     maxLines = 1,
                     softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = nameWeight,
                 )
@@ -138,15 +141,33 @@ fun MailRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // 标题比预览更早收束，末端同样淡出，不再用省略号。
+            Box(
+                Modifier
+                    .padding(end = 40.dp)
+                    .fillMaxWidth()
+                    .fadeEnd(background),
+            ) {
+                Text(
+                    text = mail.subject,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = nameWeight,
+                )
+            }
             Text(
-                text = mail.subject,
-                modifier = Modifier.padding(end = 40.dp),
+                text = mail.preview,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fadeEnd(background),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = nameWeight,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            PreviewLine(text = mail.preview, fadeColor = background)
         }
     }
 }
@@ -219,29 +240,18 @@ private fun TagChip(tag: MailTag) {
     )
 }
 
-@Composable
-private fun PreviewLine(text: String, fadeColor: Color) {
-    Text(
-        text = text,
-        modifier = Modifier
-            .fillMaxWidth()
-            .drawWithContent {
-                drawContent()
-                val fade = 36.dp.toPx()
-                drawRect(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(Color.Transparent, fadeColor),
-                        startX = size.width - fade,
-                        endX = size.width,
-                    ),
-                    topLeft = Offset(size.width - fade, 0f),
-                    size = Size(fade, size.height),
-                )
-            },
-        maxLines = 1,
-        softWrap = false,
-        overflow = TextOverflow.Clip,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+/** 行末约 36dp 过渡到行底色，用来代替省略号。 */
+private fun Modifier.fadeEnd(fadeColor: Color): Modifier = drawWithContent {
+    drawContent()
+    val fade = 36.dp.toPx().coerceAtMost(size.width)
+    if (fade <= 0f) return@drawWithContent
+    drawRect(
+        brush = Brush.horizontalGradient(
+            colors = listOf(Color.Transparent, fadeColor),
+            startX = size.width - fade,
+            endX = size.width,
+        ),
+        topLeft = Offset(size.width - fade, 0f),
+        size = Size(fade, size.height),
     )
 }
