@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
@@ -90,7 +92,10 @@ fun MailRow(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Box(
                     Modifier
                         .padding(end = 6.dp)
@@ -102,26 +107,33 @@ fun MailRow(
                 )
                 Text(
                     text = mail.fromName,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.weight(1f),
                     maxLines = 1,
+                    softWrap = false,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = nameWeight,
                 )
-                mail.tags.forEach { tag ->
-                    TagChip(tag)
-                }
                 if (showClassifying && mail.tags.isEmpty()) {
                     Text(
                         text = stringResource(R.string.list_classifying),
-                        modifier = Modifier.padding(start = 6.dp),
+                        modifier = Modifier.padding(start = 8.dp),
+                        maxLines = 1,
+                        softWrap = false,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Box(Modifier.weight(1f))
+                mail.tags.asReversed().forEach { tag ->
+                    TagChip(tag)
+                }
+                if (mail.tags.isNotEmpty() || (showClassifying && mail.tags.isEmpty())) {
+                    Spacer(Modifier.width(8.dp))
+                }
                 Text(
                     text = formatMailTime(mail.timeMillis),
+                    maxLines = 1,
+                    softWrap = false,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -24,9 +25,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.NavMetadataKey
@@ -43,12 +49,13 @@ import kotlinx.coroutines.launch
 val LocalDetailHandlesBack = staticCompositionLocalOf { true }
 
 private val WideThreshold = 640.dp
-private val ComfortableList = 280.dp
-private val ComfortableDetail = 360.dp
+private const val MIN_LIST_FRACTION = 0.30f
+private const val MAX_LIST_FRACTION = 0.60f
 
 /**
- * 窗口放得下 280dp 列表和 360dp 正文时并排。
- * 默认列表约占 34%。拖进舒适范围会记住比例，拖过之后只跟着走一段，松手弹回。
+ * 窗口放得下大约 640dp 时并排。
+ * 列表默认占 40%。拖动时列表停在 30% 到 60%。
+ * 再往外拖，两边内容宽度不动，分界线盖住旁边的内容，松手弹回。
  */
 class MailSplitStrategy(
     private val isWide: Boolean,
@@ -121,41 +128,65 @@ private fun MailSplitLayout(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val total = constraints.maxWidth.toFloat().coerceAtLeast(1f)
-        val minList = with(density) { ComfortableList.toPx() }
-        val minDetail = with(density) { ComfortableDetail.toPx() }
-        val minFraction = (minList / total).coerceAtMost(0.9f)
-        val maxFraction = ((total - minDetail) / total).coerceAtLeast(minFraction)
-        val base = preferredFraction.floatValue.coerceIn(minFraction, maxFraction) * total
-        val visual = (base + extra.floatValue).coerceIn(total * 0.12f, total * 0.88f)
-        Row(Modifier.fillMaxSize()) {
-            Box(Modifier.width(with(density) { visual.toDp() }).fillMaxHeight()) {
-                slots.list()
+        val fraction = preferredFraction.floatValue.coerceIn(MIN_LIST_FRACTION, MAX_LIST_FRACTION)
+        val contentWidth = fraction * total
+        val dividerX = (contentWidth + extra.floatValue).coerceIn(0f, total)
+        val handleWidth = 20.dp
+        val handlePx = with(density) { handleWidth.toPx() }
+        val rubberRange = with(density) { 180.dp.toPx() }
+        Box(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .width(with(density) { contentWidth.toDp() })
+                        .fillMaxHeight()
+                        .clipToBounds(),
+                ) {
+                    slots.list()
+                }
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clipToBounds(),
+                ) {
+                    slots.detail()
+                }
             }
             Box(
                 Modifier
-                    .width(16.dp)
+                    .zIndex(1f)
+                    .offset { IntOffset((dividerX - handlePx / 2f).roundToInt(), 0) }
+                    .width(handleWidth)
                     .fillMaxHeight()
-                    .pointerInput(total, minFraction, maxFraction) {
-                        var widthPx = base
+                    .pointerInput(total, rubberRange) {
+                        var dragX = contentWidth
                         detectHorizontalDragGestures(
                             onDragStart = {
                                 settle?.cancel()
                                 val shown = preferredFraction.floatValue
-                                    .coerceIn(minFraction, maxFraction) * total + extra.floatValue
-                                widthPx = shown
+                                    .coerceIn(MIN_LIST_FRACTION, MAX_LIST_FRACTION) * total
+                                dragX = shown + extra.floatValue
                             },
                             onDragEnd = { settle = springExtraBack(scope, extra) },
                             onDragCancel = { settle = springExtraBack(scope, extra) },
                             onHorizontalDrag = { _, delta ->
-                                widthPx += delta
-                                val minPx = minFraction * total
-                                val maxPx = maxFraction * total
-                                if (minPx < maxPx - 1f && widthPx in minPx..maxPx) {
-                                    preferredFraction.floatValue = widthPx / total
-                                    extra.floatValue = 0f
-                                } else {
-                                    val edge = if (minPx >= maxPx) minPx else widthPx.coerceIn(minPx, maxPx)
-                                    extra.floatValue = (widthPx - edge) * 0.35f
+                                dragX = (dragX + delta).coerceIn(-rubberRange, total + rubberRange)
+                                val minPx = MIN_LIST_FRACTION * total
+                                val maxPx = MAX_LIST_FRACTION * total
+                                when {
+                                    dragX < minPx -> {
+                                        preferredFraction.floatValue = MIN_LIST_FRACTION
+                                        extra.floatValue = resistPastEdge(dragX - minPx, rubberRange)
+                                    }
+                                    dragX > maxPx -> {
+                                        preferredFraction.floatValue = MAX_LIST_FRACTION
+                                        extra.floatValue = resistPastEdge(dragX - maxPx, rubberRange)
+                                    }
+                                    else -> {
+                                        preferredFraction.floatValue = dragX / total
+                                        extra.floatValue = 0f
+                                    }
                                 }
                             },
                         )
@@ -169,11 +200,16 @@ private fun MailSplitLayout(
                         .background(MaterialTheme.colorScheme.outlineVariant),
                 )
             }
-            Box(Modifier.weight(1f).fillMaxHeight()) {
-                slots.detail()
-            }
         }
     }
+}
+
+/** 越界越拖越沉，视觉位移趋近一段固定距离，不会把分界线甩出屏幕。 */
+private fun resistPastEdge(pastPx: Float, rangePx: Float): Float {
+    if (pastPx == 0f || rangePx <= 0f) return 0f
+    val sign = if (pastPx < 0f) -1f else 1f
+    val distance = abs(pastPx)
+    return sign * rangePx * (1f - 1f / (distance / rangePx + 1f))
 }
 
 private fun springExtraBack(

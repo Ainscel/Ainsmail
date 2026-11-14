@@ -31,9 +31,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ainscel.mymail.R
 import com.ainscel.mymail.model.Folder
@@ -241,6 +248,8 @@ private fun ListTopBar(
     onSearch: () -> Unit,
     onCompose: () -> Unit,
 ) {
+    val fadeColor = MaterialTheme.colorScheme.surface
+    var titleClipped by remember { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
@@ -251,14 +260,32 @@ private fun ListTopBar(
             text = title,
             modifier = Modifier
                 .weight(1f)
-                .padding(start = 8.dp)
-                .clickable(onClick = onTitleClick),
+                .padding(start = 8.dp, end = 4.dp)
+                .clickable(onClick = onTitleClick)
+                .drawWithContent {
+                    drawContent()
+                    if (!titleClipped) return@drawWithContent
+                    val fade = 28.dp.toPx().coerceAtMost(size.width)
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, fadeColor),
+                            startX = size.width - fade,
+                            endX = size.width,
+                        ),
+                        topLeft = Offset(size.width - fade, 0f),
+                        size = Size(fade, size.height),
+                    )
+                },
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Clip,
+            onTextLayout = { titleClipped = it.hasVisualOverflow },
             style = MaterialTheme.typography.headlineSmall,
         )
-        TextButton(onClick = onFilter) { Text(stringResource(R.string.list_filter)) }
-        TextButton(onClick = onMarkRead) { Text(stringResource(R.string.list_mark_read)) }
+        TextButton(onClick = onFilter) { BarAction(stringResource(R.string.list_filter)) }
+        TextButton(onClick = onMarkRead) { BarAction(stringResource(R.string.list_mark_read)) }
         Box {
-            TextButton(onClick = onMenuOpen) { Text(stringResource(R.string.list_more)) }
+            TextButton(onClick = onMenuOpen) { BarAction(stringResource(R.string.list_more)) }
             DropdownMenu(expanded = menuOpen, onDismissRequest = onMenuDismiss) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.list_multi_select)) },
@@ -275,6 +302,11 @@ private fun ListTopBar(
             }
         }
     }
+}
+
+@Composable
+private fun BarAction(label: String) {
+    Text(text = label, maxLines = 1, softWrap = false)
 }
 
 @Composable

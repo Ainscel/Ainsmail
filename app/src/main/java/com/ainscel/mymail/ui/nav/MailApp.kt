@@ -74,7 +74,9 @@ fun MailApp(
     val groupPending = stringResource(R.string.account_add_group_pending)
     val allAccounts = stringResource(R.string.account_all)
     var addDialog by rememberSaveable { mutableStateOf(false) }
-    val splitFraction = rememberSaveable { mutableFloatStateOf(0.34f) }
+    val splitFraction = rememberSaveable { mutableFloatStateOf(0.40f) }
+    // 上一版默认是 34%，已经存下来的比例改到现在的 40%。
+    if (splitFraction.floatValue == 0.34f) splitFraction.floatValue = 0.40f
     val context = LocalContext.current
 
     LaunchedEffect(mailbox.accountId, mailbox.folder, mailbox.mails.toList()) {
