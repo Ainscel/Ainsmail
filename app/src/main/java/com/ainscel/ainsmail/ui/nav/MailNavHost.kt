@@ -8,6 +8,7 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.scene.SceneStrategy
 import androidx.navigation3.ui.NavDisplay
+import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.ui.detail.ComposePlaceholder
 import com.ainscel.ainsmail.ui.detail.MailDetailPane
 import com.ainscel.ainsmail.ui.list.MailListPane
@@ -22,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 @Composable
 internal fun MailNavHost(
     mailbox: MailboxViewModel,
+    book: AccountBook,
     backStack: NavBackStack<NavKey>,
     overlay: OverlayController,
     scope: CoroutineScope,
@@ -82,6 +84,7 @@ internal fun MailNavHost(
             entry<SettingsSectionRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->
                 SettingsSectionPane(
                     section = route.section,
+                    book = book,
                     onBack = { backStack.removeLastOrNull() },
                 )
             }

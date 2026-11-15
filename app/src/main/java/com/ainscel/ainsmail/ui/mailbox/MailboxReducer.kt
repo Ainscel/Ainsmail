@@ -1,7 +1,9 @@
 package com.ainscel.ainsmail.ui.mailbox
 
+import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.MailType
+import com.ainscel.ainsmail.model.MailboxScope
 import com.ainscel.ainsmail.model.ReadFilter
 import com.ainscel.ainsmail.model.RemoteFolder
 import com.ainscel.ainsmail.model.Section
@@ -61,7 +63,36 @@ fun reduce(session: MailboxSession, intent: MailboxIntent, noticeId: Long): Redu
             }
         }
         MailboxIntent.Undo -> ReduceOutcome(session.restoreUndo())
+        is MailboxIntent.UseRealAccounts -> ReduceOutcome(
+            session.copy(
+                accounts = intent.accounts,
+                mails = emptyList(),
+                scope = retainedScope(session.scope, intent.accounts),
+                undo = null,
+                notice = null,
+            ).clearSelection(),
+        )
+        is MailboxIntent.ReplaceAccounts -> {
+            val scope = retainedScope(session.scope, intent.accounts)
+            val next = session.copy(accounts = intent.accounts, scope = scope)
+                .let { if (it.scope == session.scope) it else it.clearSelection() }
+            if (next == session) ReduceOutcome(session) else ReduceOutcome(next)
+        }
+        is MailboxIntent.RestoreSamples -> ReduceOutcome(
+            session.copy(
+                accounts = intent.accounts,
+                mails = intent.mails,
+                scope = MailboxScope.All,
+                undo = null,
+                notice = null,
+            ).clearSelection(),
+        )
     }
+}
+
+private fun retainedScope(scope: MailboxScope, accounts: List<Account>): MailboxScope = when (scope) {
+    MailboxScope.All -> scope
+    is MailboxScope.Account -> if (accounts.any { it.id == scope.id }) scope else MailboxScope.All
 }
 
 /** 当前范围和板块里的信，不含已读、类型、标签筛选。 */

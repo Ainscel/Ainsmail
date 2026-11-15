@@ -135,15 +135,11 @@ private fun AvatarScroller(
                         .size(width = 76.dp, height = item),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircleButton(
-                        label = account.name,
+                    AccountFace(
+                        account = account,
                         selected = account.id == selectedAccountId,
                         onClick = { onSelectAccount(account.id) },
-                        container = avatarColor(account.hue),
-                        content = Color.White,
-                    ) {
-                        Text(account.label, color = Color.White, fontSize = 14.sp)
-                    }
+                    )
                 }
             }
             Box(

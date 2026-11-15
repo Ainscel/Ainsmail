@@ -11,6 +11,7 @@ import com.ainscel.ainsmail.model.TagWord
 import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.model.Provider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -178,6 +179,76 @@ class MailboxReducerTest {
         assertEquals(first.chrome, second.chrome)
         assertSame(first.chrome.accounts, second.chrome.accounts)
         assertEquals(false, second.list.rows.single().unread)
+    }
+
+    @Test
+    fun realAccountsDropSampleMailAndUnknownScope() {
+        val session = MailboxSession(
+            accounts = listOf(Account("a1", "甲", "a@qq.com", Provider.Qq)),
+            mails = listOf(mail("a")),
+            catalog = TagCatalog(emptyList()),
+            scope = MailboxScope.Account("a1"),
+            multiSelect = true,
+            selectedIds = setOf("a"),
+        )
+        val real = Account("u1", "乙", "b@qq.com", Provider.Qq)
+        val next = reduce(session, MailboxIntent.UseRealAccounts(listOf(real)), 1L).session
+
+        assertTrue(next.mails.isEmpty())
+        assertEquals(MailboxScope.All, next.scope)
+        assertEquals(listOf(real), next.accounts)
+        assertTrue(next.selectedIds.isEmpty())
+        assertNull(next.undo)
+    }
+
+    @Test
+    fun replaceAccountsKeepsMailAndDropsMissingScope() {
+        val keptMail = mail("a")
+        val session = MailboxSession(
+            accounts = listOf(Account("a1", "甲", "a@qq.com", Provider.Qq)),
+            mails = listOf(keptMail),
+            catalog = TagCatalog(emptyList()),
+            scope = MailboxScope.Account("a1"),
+            multiSelect = true,
+            selectedIds = setOf("a"),
+        )
+        val renamed = Account("a1", "甲乙", "a@qq.com", Provider.Qq)
+        val kept = reduce(session, MailboxIntent.ReplaceAccounts(listOf(renamed)), 1L).session
+        assertEquals(listOf(keptMail), kept.mails)
+        assertEquals(MailboxScope.Account("a1"), kept.scope)
+        assertEquals("甲乙", kept.accounts.single().name)
+        assertEquals(setOf("a"), kept.selectedIds)
+
+        val removed = reduce(session, MailboxIntent.ReplaceAccounts(emptyList()), 2L).session
+        assertEquals(MailboxScope.All, removed.scope)
+        assertTrue(removed.selectedIds.isEmpty())
+        assertEquals(listOf(keptMail), removed.mails)
+    }
+
+    @Test
+    fun avatarChangeReplacesAccountList() {
+        val session = MailboxSession(
+            accounts = listOf(Account("a1", "甲", "a@qq.com", Provider.Qq)),
+            mails = listOf(mail("a")),
+            catalog = TagCatalog(emptyList()),
+        )
+        val first = project(session, now = 0L)
+        val same = project(
+            session.copy(accounts = listOf(Account("a1", "甲", "a@qq.com", Provider.Qq))),
+            now = 0L,
+            previousAccounts = first.chrome.accounts,
+        )
+        assertSame(first.chrome.accounts, same.chrome.accounts)
+
+        val photo = project(
+            session.copy(
+                accounts = listOf(Account("a1", "甲", "a@qq.com", Provider.Qq, "account/a1/avatar-1")),
+            ),
+            now = 0L,
+            previousAccounts = first.chrome.accounts,
+        )
+        assertNotSame(first.chrome.accounts, photo.chrome.accounts)
+        assertEquals("account/a1/avatar-1", photo.chrome.accounts.single().avatarFile)
     }
 }
 

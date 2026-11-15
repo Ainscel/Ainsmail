@@ -54,6 +54,8 @@ data class Account(
     val name: String,
     val address: String,
     val provider: Provider,
+    /** 相对 files 目录的头像文件。没有就用显示名画纯色圆。 */
+    val avatarFile: String? = null,
 )
 
 /**

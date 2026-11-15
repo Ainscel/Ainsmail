@@ -1,6 +1,8 @@
 package com.ainscel.ainsmail.ui.mailbox
 
 import androidx.compose.runtime.Immutable
+import com.ainscel.ainsmail.model.Account
+import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.MailType
 import com.ainscel.ainsmail.model.MailboxScope
 import com.ainscel.ainsmail.model.ReadFilter
@@ -71,6 +73,7 @@ data class AccountUi(
     val name: String,
     val label: String,
     val hue: Float,
+    val avatarFile: String? = null,
 )
 
 @Immutable
@@ -98,6 +101,9 @@ sealed interface MailboxIntent {
     data class AddTag(val name: String) : MailboxIntent
     data class ConsumeNotice(val id: Long) : MailboxIntent
     data object Undo : MailboxIntent
+    data class UseRealAccounts(val accounts: List<Account>) : MailboxIntent
+    data class ReplaceAccounts(val accounts: List<Account>) : MailboxIntent
+    data class RestoreSamples(val accounts: List<Account>, val mails: List<Mail>) : MailboxIntent
 }
 
 enum class AddTagResult {

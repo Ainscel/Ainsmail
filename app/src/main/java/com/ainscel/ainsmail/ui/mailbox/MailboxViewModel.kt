@@ -6,22 +6,42 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
 import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.TagCatalog
+import com.ainscel.ainsmail.security.AccountBook
+import com.ainscel.ainsmail.security.AccountDirectory
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.launch
 
-/** 骨架阶段的邮箱。会话在内存里，旋转屏幕还在，进程被杀掉就回到当初传进来的那一份。 */
+/**
+ * 没有保存过账号时用传入的样例。
+ * 一旦加密文件里有账号，会话改成这些账号，样例信清掉。
+ */
 class MailboxViewModel(
-    accounts: List<Account>,
-    mails: List<Mail>,
+    private val sampleAccounts: List<Account>,
+    private val sampleMails: List<Mail>,
     catalog: TagCatalog,
+    private val book: AccountBook,
+    private val io: CoroutineDispatcher,
 ) : ViewModel() {
+    private var showingSamples = true
     private var session = MailboxSession(
-        accounts = accounts,
-        mails = mails,
+        accounts = sampleAccounts,
+        mails = sampleMails,
         catalog = catalog,
     )
     private val initial = project(session, System.currentTimeMillis())
+
+    init {
+        viewModelScope.launch {
+            book.directory.collect { directory ->
+                if (directory is AccountDirectory.Ready) applySaved(directory.accounts)
+            }
+        }
+        viewModelScope.launch(io) { book.load() }
+    }
 
     var chrome by mutableStateOf(initial.chrome)
         private set
@@ -60,6 +80,20 @@ class MailboxViewModel(
         return session.subjectOf(id)
     }
 
+    private fun applySaved(saved: List<Account>) {
+        if (saved.isEmpty()) {
+            if (!showingSamples) {
+                showingSamples = true
+                onIntent(MailboxIntent.RestoreSamples(sampleAccounts, sampleMails))
+            }
+        } else if (showingSamples) {
+            showingSamples = false
+            onIntent(MailboxIntent.UseRealAccounts(saved))
+        } else {
+            onIntent(MailboxIntent.ReplaceAccounts(saved))
+        }
+    }
+
     private fun publish(previous: MailboxSession) {
         val projected = project(session, System.currentTimeMillis(), chrome.accounts)
         if (projected.chrome != chrome) chrome = projected.chrome
@@ -75,11 +109,13 @@ class MailboxViewModel(
             accounts: List<Account>,
             mails: List<Mail>,
             catalog: TagCatalog,
+            book: AccountBook,
+            io: CoroutineDispatcher,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return MailboxViewModel(accounts, mails, catalog) as T
+                    return MailboxViewModel(accounts, mails, catalog, book, io) as T
                 }
             }
         }

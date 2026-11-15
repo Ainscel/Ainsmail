@@ -28,23 +28,32 @@ import com.ainscel.ainsmail.data.SampleAccounts
 import com.ainscel.ainsmail.data.sampleCatalog
 import com.ainscel.ainsmail.data.sampleMails
 import com.ainscel.ainsmail.model.MailboxScope
+import com.ainscel.ainsmail.security.AccountBook
+import com.ainscel.ainsmail.ui.account.AccountLoginLayer
+import com.ainscel.ainsmail.ui.account.AccountLoginViewModel
 import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
 import com.ainscel.ainsmail.ui.mailbox.MailboxViewModel
 import com.ainscel.ainsmail.ui.shell.AccountOverlay
 import com.ainscel.ainsmail.ui.shell.OverlayController
 import com.ainscel.ainsmail.ui.shell.isWideWindow
 import com.ainscel.ainsmail.ui.shell.rememberSplitFraction
+import kotlinx.coroutines.Dispatchers
 
 @Composable
 fun MailApp(modifier: Modifier = Modifier) {
-    val mailboxFactory = remember {
+    val context = LocalContext.current
+    val book = remember { AccountBook(context.applicationContext) }
+    val mailboxFactory = remember(book) {
         MailboxViewModel.factory(
             accounts = SampleAccounts,
             mails = sampleMails(System.currentTimeMillis()),
             catalog = sampleCatalog(),
+            book = book,
+            io = Dispatchers.IO,
         )
     }
     val mailbox = viewModel<MailboxViewModel>(factory = mailboxFactory)
+    val login = viewModel<AccountLoginViewModel>(factory = AccountLoginViewModel.factory(context, book))
     val chrome = mailbox.chrome
     val backStack = rememberNavBackStack(MailListRoute)
     val overlay = remember { OverlayController() }
@@ -52,9 +61,10 @@ fun MailApp(modifier: Modifier = Modifier) {
     val snackbarHostState = remember { SnackbarHostState() }
     val allAccounts = stringResource(R.string.account_all)
     var addDialog by rememberSaveable { mutableStateOf(false) }
+    var showProviders by rememberSaveable { mutableStateOf(false) }
+    var showQq by rememberSaveable { mutableStateOf(false) }
     var unavailable by remember { mutableStateOf<UnavailableHint?>(null) }
     val splitFraction = rememberSplitFraction()
-    val context = LocalContext.current
 
     MailboxNoticeEffect(
         notice = chrome.notice,
@@ -67,6 +77,11 @@ fun MailApp(modifier: Modifier = Modifier) {
         hostState = snackbarHostState,
         onConsumed = { unavailable = null },
     )
+    LaunchedEffect(login.state.savedTick) {
+        if (login.state.savedTick == 0L) return@LaunchedEffect
+        showProviders = false
+        showQq = false
+    }
     LaunchedEffect(chrome.sectionMailIds) {
         val openId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId ?: return@LaunchedEffect
         if (openId !in chrome.sectionMailIds) backStack.removeAll { it is MailDetailRoute }
@@ -85,6 +100,7 @@ fun MailApp(modifier: Modifier = Modifier) {
             Box(Modifier.fillMaxSize()) {
                 MailNavHost(
                     mailbox = mailbox,
+                    book = book,
                     backStack = backStack,
                     overlay = overlay,
                     scope = scope,
@@ -130,7 +146,7 @@ fun MailApp(modifier: Modifier = Modifier) {
             onDismiss = { addDialog = false },
             onLogin = {
                 addDialog = false
-                unavailable = UnavailableHint(UnavailableKind.Login, System.nanoTime())
+                showProviders = true
             },
             onGroup = {
                 addDialog = false
@@ -138,4 +154,19 @@ fun MailApp(modifier: Modifier = Modifier) {
             },
         )
     }
+    AccountLoginLayer(
+        login = login,
+        snackbarHostState = snackbarHostState,
+        showProviders = showProviders,
+        showQq = showQq,
+        onDismissProviders = { showProviders = false },
+        onOpenQq = {
+            showProviders = false
+            showQq = true
+        },
+        onDismissQq = {
+            showQq = false
+            login.consumeFailure()
+        },
+    )
 }

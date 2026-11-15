@@ -66,7 +66,7 @@ private fun accountUi(session: MailboxSession, previous: List<AccountUi>): List<
     val unchanged = previous.size == accounts.size && previous.indices.all { index ->
         val account = accounts[index]
         val ui = previous[index]
-        ui.id == account.id && ui.name == account.name
+        ui.id == account.id && ui.name == account.name && ui.avatarFile == account.avatarFile
     }
     if (unchanged) return previous
     return accounts.map { account ->
@@ -75,6 +75,7 @@ private fun accountUi(session: MailboxSession, previous: List<AccountUi>): List<
             name = account.name,
             label = avatarLabel(account.name),
             hue = avatarHue(account.name),
+            avatarFile = account.avatarFile,
         )
     }
 }

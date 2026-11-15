@@ -59,6 +59,7 @@ dependencies {
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)
     implementation(libs.kotlinx.serialization.core)
+    implementation(libs.kotlinx.serialization.json)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
 }
@@ -69,6 +70,7 @@ tasks.withType<Test>().configureEach {
     val kotlinClasses = layout.buildDirectory.dir(
         "intermediates/built_in_kotlinc/${variant.replaceFirstChar { it.lowercase() }}UnitTest/compile${variant}UnitTestKotlin/classes",
     )
-    classpath += files(kotlinClasses)
-    setTestClassesDirs(files(testClassesDirs, kotlinClasses))
+    val compiled = files(kotlinClasses)
+    classpath = classpath.plus(compiled)
+    setTestClassesDirs(files(kotlinClasses))
 }

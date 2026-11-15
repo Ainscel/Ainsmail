@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ainscel.ainsmail.R
+import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.ui.shell.SplitFullscreenButton
 import com.ainscel.ainsmail.ui.shell.LocalDetailHandlesBack
 import com.ainscel.ainsmail.ui.shell.MailCapsuleHeight
@@ -35,11 +36,27 @@ import com.ainscel.ainsmail.ui.shell.holdWidthUntilSettled
 @Composable
 fun SettingsSectionPane(
     section: SettingsSection,
+    book: AccountBook,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val title = stringResource(section.label)
     when (section) {
+        SettingsSection.Accounts -> {
+            val context = LocalContext.current
+            val model = viewModel<AccountSettingsViewModel>(
+                factory = AccountSettingsViewModel.factory(context, book),
+            )
+            AccountSettings(
+                state = model.state,
+                onRename = model::rename,
+                onPickAvatar = model::replaceAvatar,
+                onRemove = model::remove,
+                title = title,
+                onBack = onBack,
+                modifier = modifier,
+            )
+        }
         SettingsSection.Secrets -> {
             val context = LocalContext.current
             val model = viewModel<SecretsViewModel>(factory = SecretsViewModel.factory(context))
@@ -129,7 +146,7 @@ private fun SecretsSettings(
 }
 
 @Composable
-private fun SettingsSectionFrame(
+internal fun SettingsSectionFrame(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
