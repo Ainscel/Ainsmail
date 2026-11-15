@@ -87,6 +87,30 @@ fun reduce(session: MailboxSession, intent: MailboxIntent, noticeId: Long): Redu
                 notice = null,
             ).clearSelection(),
         )
+        is MailboxIntent.ReplaceMails -> {
+            if (session.mails == intent.mails) {
+                ReduceOutcome(session)
+            } else {
+                val selected = session.selectedIds.filter { id -> intent.mails.any { it.id == id } }.toSet()
+                val undo = session.undo?.takeIf { record ->
+                    record.placements.keys.all { id -> intent.mails.any { it.id == id } }
+                }
+                ReduceOutcome(
+                    session.copy(
+                        mails = intent.mails,
+                        selectedIds = selected,
+                        multiSelect = session.multiSelect && selected.isNotEmpty(),
+                        undo = undo,
+                    ),
+                )
+            }
+        }
+        is MailboxIntent.ReportNeedsReauth -> ReduceOutcome(
+            session.copy(notice = Notice.NeedsReauth(noticeId, intent.accountId)),
+        )
+        MailboxIntent.ReportSyncFailed -> ReduceOutcome(
+            session.copy(notice = Notice.SyncFailed(noticeId)),
+        )
     }
 }
 

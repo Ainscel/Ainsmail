@@ -6,9 +6,7 @@
 
 ## 现在到哪一步
 
-页面框架和账号接入已经做完。样式精修、动效、IMAP 收信、正文清洗、模型分类都还没开始。
-
-可以接着做收信，不必再推倒骨架。
+页面框架、账号接入、Task 2.1 首拉落库已做完。下一步是 2.2 增量 / IDLE / 已读回写。正文清洗、模型分类、手势与视觉还没开始。
 
 
 ## 已经有的
@@ -128,3 +126,16 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 原 Task 2 把首拉、增量、IDLE、已读回写、归档不变量平铺成一条，验收边界不清，且把分类 / 标签写成了本阶段交付。
 - 改为 **2.1 连通、落库与首拉**（IMAP 连通、板块映射、本地库信头与游标、7 天 / 30 天·50 封首拉、列表改订库 Flow）与 **2.2 增量、保活与本机状态**（UID 增量、IDLE / 15 分钟、当前范围刷新、已读回写、归档本机标记、不抢滑动主线程）。
 - 正文清洗仍归第 3 项，模型分类仍归第 4 项；本项只预留类型 / 标签字段。仍强调有真实来源再落库、不建空 Repository。
+
+## 2026-11-16 04:30
+
+完成 Task 2.1：连通、落库与首拉。
+
+- 依赖：Room 2.8.4 + KSP 2.3.4（适配 AGP 9 built-in Kotlin）、Angus Mail（Jakarta IMAP / XOAUTH2）。
+- `MailDatabase` / `MailDao`：信头、本机已读与归档、同步游标；upsert 保留本地标记；类型 / 标签字段预留。
+- `openImapStore`：QQ 授权码、Gmail XOAUTH2；令牌过期或鉴权失败 → `NeedsReauth`。`AccountBook.updateGmailAccess` 供重登写回。前台静默 `authorize()` 未接 Activity 回调，失败时 Snackbar 提示重登。
+- `resolveRemoteFolders`：INBOX + SPECIAL-USE / 常见中英文名；对不上不归错夹。
+- `MailFirstSync`：先 7 天，再按全局 50 封 / 30 天补历史；失败不清库。
+- `MailboxViewModel`：真账号后订 `MailLocalStore.observeMails()`，触发首拉；本机意图仍走归约并 `persistLocalMails`。
+- 单测：`FirstSyncPolicyTest`、`ReplaceMails` 归约。本机工程路径含「项目」，Windows 上 Gradle 测试进程 ClassNotFound（args 文件编码），`:app:compileDebugKotlin` 已通过；ASCII 路径下再跑测试。
+- 下一步：Task 2.2 增量 / IDLE / 已读回写。

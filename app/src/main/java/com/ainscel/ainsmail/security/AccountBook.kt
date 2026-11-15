@@ -166,6 +166,23 @@ class AccountBook(
         written
     }
 
+    /** 静默重授权成功后写回访问令牌。不改展示名与头像。 */
+    fun updateGmailAccess(id: String, accessToken: String, expiresAtEpochMs: Long): AccountWrite =
+        synchronized(lock) {
+            val token = accessToken.trim()
+            if (token.isEmpty()) return AccountWrite.BlankCode
+            val current = records.find { it.id == id } ?: return AccountWrite.Unreadable
+            if (current.provider != AccountRecord.PROVIDER_GMAIL) return AccountWrite.Unreadable
+            records = records.map {
+                if (it.id == id) {
+                    it.copy(accessToken = token, accessTokenExpiresAtEpochMs = expiresAtEpochMs)
+                } else {
+                    it
+                }
+            }
+            commit()
+        }
+
     private fun insert(
         providerKey: String,
         address: String,

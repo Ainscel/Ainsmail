@@ -250,6 +250,19 @@ class MailboxReducerTest {
         assertNotSame(first.chrome.accounts, photo.chrome.accounts)
         assertEquals("account/a1/avatar-1", photo.chrome.accounts.single().avatarFile)
     }
+
+    @Test
+    fun replaceMailsKeepsSelectionThatStillExists() {
+        val session = session(mail("a"), mail("b")).selecting("a", "gone")
+        val next = reduce(
+            session,
+            MailboxIntent.ReplaceMails(listOf(mail("a"), mail("c"))),
+            noticeId = 1L,
+        ).session
+        assertEquals(setOf("a"), next.selectedIds)
+        assertEquals(setOf("a", "c"), next.mails.ids())
+        assertTrue(next.multiSelect)
+    }
 }
 
 private fun MailboxSession.selecting(vararg ids: String): MailboxSession =

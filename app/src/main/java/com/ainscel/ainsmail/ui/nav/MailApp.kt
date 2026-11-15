@@ -25,6 +25,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.data.SampleAccounts
+import com.ainscel.ainsmail.data.mail.MailFirstSync
+import com.ainscel.ainsmail.data.mail.MailLocalStore
 import com.ainscel.ainsmail.data.sampleCatalog
 import com.ainscel.ainsmail.data.sampleMails
 import com.ainscel.ainsmail.model.MailboxScope
@@ -46,12 +48,16 @@ fun MailApp(modifier: Modifier = Modifier) {
     val appContext = context.applicationContext
     val secrets = remember { SecretStore(appContext) }
     val book = remember { AccountBook(appContext, secrets) }
-    val mailboxFactory = remember(book) {
+    val mailStore = remember { MailLocalStore(appContext, Dispatchers.IO) }
+    val firstSync = remember(book, mailStore) { MailFirstSync(book, mailStore, Dispatchers.IO) }
+    val mailboxFactory = remember(book, mailStore, firstSync) {
         MailboxViewModel.factory(
             accounts = SampleAccounts,
             mails = sampleMails(System.currentTimeMillis()),
             catalog = sampleCatalog(),
             book = book,
+            mailStore = mailStore,
+            firstSync = firstSync,
             io = Dispatchers.IO,
         )
     }

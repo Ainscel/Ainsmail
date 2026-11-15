@@ -38,7 +38,9 @@
     <string name="settings_account_rename">修改显示名</string>
     <string name="settings_account_avatar">更换头像</string>
     <string name="settings_account_delete">删除账号</string>
-    <string name="settings_account_delete_body">只清除这台设备上的登录凭证和头像。邮件同步还没开始。</string>
+    <string name="settings_account_delete_body">只清除这台设备上的登录凭证和头像。本机已同步的邮件头仍留在数据库里。</string>
+    <string name="sync_needs_reauth">Gmail 授权已过期，请到设置里重新登录该账号。</string>
+    <string name="sync_failed">收信暂时失败，已保留本地邮件。</string>
     <string name="account_add_group_pending">新建聚合还没接上</string>
     <string name="list_filter">筛选</string>
     <string name="list_mark_read">一键已读</string>

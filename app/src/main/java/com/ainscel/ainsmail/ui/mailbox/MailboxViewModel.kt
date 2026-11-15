@@ -7,23 +7,30 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.ainscel.ainsmail.data.mail.MailFirstSync
+import com.ainscel.ainsmail.data.mail.MailLocalStore
+import com.ainscel.ainsmail.data.mail.FirstSyncOutcome
 import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.TagCatalog
 import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.AccountDirectory
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /**
  * 没有保存过账号时用传入的样例。
- * 一旦加密文件里有账号，会话改成这些账号，样例信清掉。
+ * 一旦加密文件里有账号，会话改成这些账号，邮件改订本地库 Flow，并触发首拉。
  */
 class MailboxViewModel(
     private val sampleAccounts: List<Account>,
     private val sampleMails: List<Mail>,
     catalog: TagCatalog,
     private val book: AccountBook,
+    private val mailStore: MailLocalStore,
+    private val firstSync: MailFirstSync,
     private val io: CoroutineDispatcher,
 ) : ViewModel() {
     private var showingSamples = true
@@ -33,6 +40,8 @@ class MailboxViewModel(
         catalog = catalog,
     )
     private val initial = project(session, System.currentTimeMillis())
+    private var observeJob: Job? = null
+    private var syncJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -56,7 +65,10 @@ class MailboxViewModel(
         val outcome = reduce(session, intent, System.nanoTime())
         val previous = session
         session = outcome.session
-        if (session != previous) publish(previous)
+        if (session != previous) {
+            publish(previous)
+            persistIfNeeded(previous, session)
+        }
         return outcome.tagResult
     }
 
@@ -84,13 +96,57 @@ class MailboxViewModel(
         if (saved.isEmpty()) {
             if (!showingSamples) {
                 showingSamples = true
+                stopRealMailPipeline()
                 onIntent(MailboxIntent.RestoreSamples(sampleAccounts, sampleMails))
             }
         } else if (showingSamples) {
             showingSamples = false
             onIntent(MailboxIntent.UseRealAccounts(saved))
+            startRealMailPipeline(saved.map { it.id })
         } else {
             onIntent(MailboxIntent.ReplaceAccounts(saved))
+            startRealMailPipeline(saved.map { it.id })
+        }
+    }
+
+    private fun startRealMailPipeline(accountIds: List<String>) {
+        if (observeJob == null) {
+            observeJob = viewModelScope.launch {
+                mailStore.observeMails().collectLatest { mails ->
+                    onIntent(MailboxIntent.ReplaceMails(mails))
+                }
+            }
+        }
+        syncJob?.cancel()
+        syncJob = viewModelScope.launch {
+            val outcomes = firstSync.syncAll(accountIds)
+            outcomes.forEach { outcome ->
+                when (outcome) {
+                    FirstSyncOutcome.Ok -> Unit
+                    is FirstSyncOutcome.NeedsReauth ->
+                        onIntent(MailboxIntent.ReportNeedsReauth(outcome.accountId))
+                    is FirstSyncOutcome.Failed ->
+                        onIntent(MailboxIntent.ReportSyncFailed)
+                }
+            }
+        }
+    }
+
+    private fun stopRealMailPipeline() {
+        observeJob?.cancel()
+        observeJob = null
+        syncJob?.cancel()
+        syncJob = null
+    }
+
+    private fun persistIfNeeded(previous: MailboxSession, next: MailboxSession) {
+        if (showingSamples || previous.mails === next.mails || previous.mails == next.mails) return
+        val changed = next.mails.filter { mail ->
+            previous.mails.find { it.id == mail.id } != mail
+        }
+        if (changed.isEmpty()) return
+        viewModelScope.launch(io) {
+            mailStore.persistLocalMails(changed)
         }
     }
 
@@ -110,12 +166,22 @@ class MailboxViewModel(
             mails: List<Mail>,
             catalog: TagCatalog,
             book: AccountBook,
+            mailStore: MailLocalStore,
+            firstSync: MailFirstSync,
             io: CoroutineDispatcher,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return MailboxViewModel(accounts, mails, catalog, book, io) as T
+                    return MailboxViewModel(
+                        accounts,
+                        mails,
+                        catalog,
+                        book,
+                        mailStore,
+                        firstSync,
+                        io,
+                    ) as T
                 }
             }
         }

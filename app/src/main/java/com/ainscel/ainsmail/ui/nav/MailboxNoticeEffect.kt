@@ -49,6 +49,8 @@ private fun Notice.text(): String = when (this) {
     is Notice.TagLimit -> stringResource(R.string.list_tag_limit)
     is Notice.TagNeedsType -> stringResource(R.string.list_tag_needs_type)
     is Notice.TagMixedTypes -> stringResource(R.string.list_tag_mixed_types)
+    is Notice.NeedsReauth -> stringResource(R.string.sync_needs_reauth)
+    is Notice.SyncFailed -> stringResource(R.string.sync_failed)
 }
 
 @Composable

@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -31,6 +32,15 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    packaging {
+        resources {
+            pickFirsts += setOf(
+                "META-INF/LICENSE.md",
+                "META-INF/NOTICE.md",
+            )
+        }
     }
 
     buildFeatures {
@@ -61,17 +71,17 @@ dependencies {
     implementation(libs.kotlinx.serialization.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.play.services.auth)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.angus.mail)
+    implementation(libs.angus.activation)
+    implementation(libs.jakarta.activation.api)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
 }
 
-// AGP 9 自带的 Kotlin 编译把测试类放在 built_in_kotlinc，没有 Java 源时测试进程找不到它们。
-tasks.withType<Test>().configureEach {
-    val variant = name.removePrefix("test").removeSuffix("UnitTest")
-    val kotlinClasses = layout.buildDirectory.dir(
-        "intermediates/built_in_kotlinc/${variant.replaceFirstChar { it.lowercase() }}UnitTest/compile${variant}UnitTestKotlin/classes",
-    )
-    val compiled = files(kotlinClasses)
-    classpath = classpath.plus(compiled)
-    setTestClassesDirs(files(kotlinClasses))
-}
+// 工程路径含非 ASCII（如「项目」）时，Windows 上 Gradle 测试进程写 classpath args 文件会丢路径，
+// 表现为 ClassNotFoundException。AGP 9 已把 built_in_kotlinc 挂进 testClassesDirs，此处不再改 classpath。
+// 单测请在纯 ASCII 路径下跑，或接受本机路径限制。
+
