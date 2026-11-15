@@ -34,19 +34,8 @@ fun Modifier.zeroReflowFadeText(
     rightInset: Dp = 0.dp,
     fadeWidth: Dp = MailTextFadeWidth,
 ): Modifier = this
-    .layout { measurable, constraints ->
-        val fixedWidth = TextMeasureWidth.roundToPx()
-        val placeable = measurable.measure(
-            Constraints(minWidth = 0, maxWidth = fixedWidth),
-        )
-        val width = when {
-            constraints.hasBoundedWidth -> constraints.maxWidth.coerceAtLeast(0)
-            else -> placeable.width
-        }
-        layout(width, placeable.height) {
-            placeable.placeRelative(0, 0)
-        }
-    }
+    // layout 必须最靠近文字。它对外报告可见槽宽度，对内仍按常量测量。
+    // 淡出画在这一层外面，size.width 才是槽宽；若顺序反了，淡出会画在全文末尾的屏幕外。
     .clipToBounds()
     .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
     .drawWithContent {
@@ -68,6 +57,19 @@ fun Modifier.zeroReflowFadeText(
             size = Size(fade, size.height),
             blendMode = BlendMode.DstIn,
         )
+    }
+    .layout { measurable, constraints ->
+        val fixedWidth = TextMeasureWidth.roundToPx()
+        val placeable = measurable.measure(
+            Constraints(minWidth = 0, maxWidth = fixedWidth),
+        )
+        val width = when {
+            constraints.hasBoundedWidth -> constraints.maxWidth.coerceAtLeast(0)
+            else -> placeable.width
+        }
+        layout(width, placeable.height) {
+            placeable.placeRelative(0, 0)
+        }
     }
 
 /**

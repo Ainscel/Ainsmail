@@ -109,7 +109,7 @@ fun SplitLayout(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val total = constraints.maxWidth.toFloat().coerceAtLeast(1f)
-        // 分界比例只在 layout / offset 里读，避免拖动时整棵子树每帧重组。
+        // 左栏宽度在 layout 里读。分界线位置只交给下面的触摸条，避免拖动时重组左右两栏。
         val handlePx = with(density) { HandleWidth.toPx() }
         val edgeHandlePx = with(density) { EdgeHandleWidth.toPx() }
         val edgePx = with(density) { FullscreenFingerEdge.toPx() }
@@ -144,23 +144,45 @@ fun SplitLayout(
                         slots.detail()
                     }
                 }
-                Box(
-                    Modifier
-                        .zIndex(1f)
-                        .layout { measurable, boxConstraints ->
-                            val dividerX = state.dividerPx(total)
-                            val handle = placeHandle(dividerX, handlePx, edgeHandlePx)
-                            val width = handle.width.roundToInt()
-                                .coerceIn(0, boxConstraints.maxWidth)
-                            val placeable = measurable.measure(
-                                boxConstraints.copy(minWidth = width, maxWidth = width),
-                            )
-                            layout(width, placeable.height) {
-                                placeable.placeRelative(handle.left.roundToInt(), 0)
-                            }
-                        }
-                        .fillMaxHeight()
-                        .pointerInput(total, rubberRange, edgePx, handlePx, edgeHandlePx) {
+                SplitDivider(
+                    state = state,
+                    scope = scope,
+                    total = total,
+                    rubberRange = rubberRange,
+                    edgePx = edgePx,
+                    handlePx = handlePx,
+                    edgeHandlePx = edgeHandlePx,
+                    modifier = Modifier.zIndex(1f),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 分界线触摸条。比例只在这个小组件里读，拖动时不会把左右两栏重新组合。
+ * 位置用 offset，触摸区域跟着线走。
+ */
+@Composable
+private fun SplitDivider(
+    state: SplitDragState,
+    scope: CoroutineScope,
+    total: Float,
+    rubberRange: Float,
+    edgePx: Float,
+    handlePx: Float,
+    edgeHandlePx: Float,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    val dividerX = state.dividerPx(total)
+    val handle = placeHandle(dividerX, handlePx, edgeHandlePx)
+    Box(
+        modifier
+            .offset { IntOffset(handle.left.roundToInt(), 0) }
+            .width(with(density) { handle.width.toDp() })
+            .fillMaxHeight()
+            .pointerInput(total, rubberRange, edgePx, handlePx, edgeHandlePx) {
                             var dragX = 0f
                             var fingerX = 0f
                             var committed = false
@@ -251,23 +273,16 @@ fun SplitLayout(
                                 },
                             )
                         },
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    Box(
-                        Modifier
-                            .offset {
-                                val dividerX = state.dividerPx(total)
-                                val handle = placeHandle(dividerX, handlePx, edgeHandlePx)
-                                IntOffset((dividerX - handle.left).roundToInt(), 0)
-                            }
-                            .width(1.dp)
-                            .fillMaxHeight()
-                            .background(MaterialTheme.colorScheme.outlineVariant),
-                    )
-                }
-            }
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Box(
+                Modifier
+                    .offset { IntOffset((dividerX - handle.left).roundToInt(), 0) }
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.outlineVariant),
+            )
         }
-    }
 }
 
 /** 越界越拖越沉，视觉位移趋近一段固定距离，不会把分界线甩出屏幕。 */
