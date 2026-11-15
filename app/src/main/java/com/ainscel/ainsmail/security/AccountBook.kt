@@ -65,9 +65,16 @@ class AccountBook(
     }
 
     fun googleClient(): GoogleClient? {
-        val read = store.read() as? SecretRead.Ok ?: return null
+        val read = store.read()
+        if (read !is SecretRead.Ok) {
+            LoginLog.w("google_client", "secrets unavailable kind=${read::class.simpleName}")
+            return null
+        }
         val secrets = read.secrets
-        if (!gmailClientReady(secrets.googleClientId)) return null
+        if (!gmailClientReady(secrets.googleClientId)) {
+            LoginLog.w("google_client", "android_client_id_not_ready")
+            return null
+        }
         return GoogleClient(secrets.googleClientId, secrets.googleClientSecret)
     }
 
@@ -172,7 +179,12 @@ class AccountBook(
             AccountWrite.Saved
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            LoginLog.e(
+                "account_commit",
+                "${error.javaClass.simpleName}: ${error.message}",
+                error,
+            )
             load()
             AccountWrite.Unreadable
         }

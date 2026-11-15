@@ -42,4 +42,18 @@ class GoogleAuthTest {
         assertEquals("https://lh3.googleusercontent.com/a", profile?.pictureUrl)
         assertNull(parseGoogleProfile("""{"email":"me@gmail.com","picture":"http://evil"}""")?.pictureUrl)
     }
+
+    @Test
+    fun diagnoseTokenResponseExposesErrorWithoutSecrets() {
+        val oauth = diagnoseTokenResponse(
+            """{"error":"invalid_grant","error_description":"Bad Request","access_token":"SECRET"}""",
+        )
+        assertTrue(oauth.contains("invalid_grant"))
+        assertTrue(oauth.contains("Bad Request"))
+        assertFalse(oauth.contains("SECRET"))
+
+        val fields = diagnoseTokenResponse("""{"access_token":"A"}""")
+        assertEquals("token_fields hasAccess=true hasRefresh=false", fields)
+        assertFalse(fields.contains("A"))
+    }
 }

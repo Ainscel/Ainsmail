@@ -66,6 +66,26 @@ fun parseIssuedTokens(raw: String): IssuedTokens? {
     return IssuedTokens(access, refresh)
 }
 
+/**
+ * 令牌响应诊断摘要。只暴露错误码与字段是否存在，不写任何令牌原文。
+ */
+fun diagnoseTokenResponse(raw: String): String {
+    val obj = runCatching { authJson.parseToJsonElement(raw) as? JsonObject }.getOrNull()
+        ?: return "token_body_not_json length=${raw.length.coerceAtMost(MAX_DIAG_LEN)}"
+    val error = obj.string("error")
+    val description = obj.string("error_description")
+    if (error != null || description != null) {
+        return buildString {
+            append("oauth_error")
+            if (error != null) append(" error=").append(error)
+            if (description != null) append(" description=").append(description.take(MAX_DIAG_LEN))
+        }
+    }
+    val hasAccess = !obj.string("access_token").isNullOrBlank()
+    val hasRefresh = !obj.string("refresh_token").isNullOrBlank()
+    return "token_fields hasAccess=$hasAccess hasRefresh=$hasRefresh"
+}
+
 fun parseGoogleProfile(raw: String): GoogleProfile? {
     val obj = authJson.parseToJsonElement(raw) as? JsonObject ?: return null
     val email = obj.string("email")?.trim()?.lowercase().orEmpty()
@@ -83,3 +103,5 @@ private fun urlEncode(value: String): String =
 
 private fun JsonObject.string(key: String): String? =
     (this[key] as? JsonPrimitive)?.contentOrNull
+
+private const val MAX_DIAG_LEN = 240

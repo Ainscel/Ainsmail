@@ -100,3 +100,12 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 
 - 生成各密度 `ic_launcher` / `ic_launcher_round` / `ic_launcher_foreground`。
 - API 26+ 走白色底的自适应图标；清单补上 `roundIcon`。
+
+## 2026-11-16 03:05
+
+登录（尤其 Gmail / Play 授权）补了可诊断错误日志。
+
+- 统一标签 `AinsmailLogin`（`LoginLog`）。只记步骤与原因，不写客户端密钥、授权码、访问令牌、刷新令牌原文。
+- `GoogleAndroidLogin`：缺 Gmail 范围、无 server auth code、换令牌 HTTP / OAuth 错误、缺刷新令牌、userinfo 失败、`ApiException` 状态码都会打日志。
+- `AccountLoginViewModel` / `AccountBook`：未配置客户端、授权页取消、落盘失败等路径同样记录。
+- 令牌响应用 `diagnoseTokenResponse` 只暴露 `error` / `error_description` 或字段有无；单测覆盖不泄密。

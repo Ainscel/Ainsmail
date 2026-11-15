@@ -71,38 +71,99 @@ class GoogleAndroidLogin(
         result: AuthorizationResult,
     ): GoogleSignIn = withContext(io) {
         try {
-            if (result.grantedScopes.none { it.toString().contains("mail.google.com") }) {
+            val granted = result.grantedScopes.map { it.toString() }
+            if (granted.none { it.contains("mail.google.com") }) {
+                LoginLog.w(
+                    "gmail_scope",
+                    "mail.google.com missing granted=$granted",
+                )
                 return@withContext GoogleSignIn.Failed(GoogleSignInFailure.Denied)
             }
             val code = result.serverAuthCode?.trim().orEmpty()
             val access = result.accessToken?.trim().orEmpty()
             val tokens = when {
                 code.isNotEmpty() -> exchangeServerAuth(client, code)
-                else -> null
+                else -> {
+                    LoginLog.w(
+                        "auth_code",
+                        "serverAuthCode empty hasAccess=${access.isNotEmpty()} hasSecret=${client.secret.isNotBlank()}",
+                    )
+                    null
+                }
             }
             val accessToken = tokens?.accessToken?.ifBlank { null } ?: access.ifBlank { null }
-                ?: return@withContext GoogleSignIn.Failed(GoogleSignInFailure.Rejected)
-            val refreshToken = tokens?.refreshToken?.trim().orEmpty()
-            if (refreshToken.isEmpty()) {
+            if (accessToken == null) {
+                LoginLog.w(
+                    "access_token",
+                    "unavailable after exchange hasCode=${code.isNotEmpty()} hasSecret=${client.secret.isNotBlank()}",
+                )
                 return@withContext GoogleSignIn.Failed(GoogleSignInFailure.Rejected)
             }
-            val profile = parseGoogleProfile(getAuthorized(GOOGLE_USERINFO, accessToken))
-                ?: return@withContext GoogleSignIn.Failed(GoogleSignInFailure.Rejected)
+            val refreshToken = tokens?.refreshToken?.trim().orEmpty()
+            if (refreshToken.isEmpty()) {
+                LoginLog.w(
+                    "refresh_token",
+                    "missing after exchange hasCode=${code.isNotEmpty()} hasSecret=${client.secret.isNotBlank()}",
+                )
+                return@withContext GoogleSignIn.Failed(GoogleSignInFailure.Rejected)
+            }
+            val profileRaw = try {
+                getAuthorized(GOOGLE_USERINFO, accessToken)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                LoginLog.e(
+                    "userinfo",
+                    "request failed ${error.javaClass.simpleName}: ${error.message}",
+                    error,
+                )
+                return@withContext GoogleSignIn.Failed(GoogleSignInFailure.Rejected)
+            }
+            val profile = parseGoogleProfile(profileRaw)
+            if (profile == null) {
+                LoginLog.w("userinfo", "profile parse failed length=${profileRaw.length}")
+                return@withContext GoogleSignIn.Failed(GoogleSignInFailure.Rejected)
+            }
             val picture = profile.pictureUrl?.let { download(it) }
+            if (profile.pictureUrl != null && picture == null) {
+                LoginLog.w("avatar", "download skipped or failed")
+            }
             GoogleSignIn.Ok(profile.email, profile.name, refreshToken, picture)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (api: ApiException) {
-            GoogleSignIn.Failed(api.toFailure())
-        } catch (_: Exception) {
+            val reason = api.toFailure()
+            LoginLog.e(
+                "complete_api",
+                "status=${api.statusCode} message=${api.status.statusMessage} -> $reason",
+                api,
+            )
+            GoogleSignIn.Failed(reason)
+        } catch (error: Exception) {
+            LoginLog.e(
+                "complete",
+                "${error.javaClass.simpleName}: ${error.message}",
+                error,
+            )
             GoogleSignIn.Failed(GoogleSignInFailure.Rejected)
         }
     }
 
     private fun exchangeServerAuth(client: GoogleClient, code: String): IssuedTokens? {
         val body = serverAuthTokenForm(client.id, client.secret, code)
-        val raw = postForm(GOOGLE_TOKEN, body) ?: return null
-        return parseIssuedTokens(raw)
+        val raw = postForm(GOOGLE_TOKEN, body)
+        if (raw == null) {
+            LoginLog.w(
+                "token_exchange",
+                "http empty hasSecret=${client.secret.isNotBlank()}",
+            )
+            return null
+        }
+        val tokens = parseIssuedTokens(raw)
+        if (tokens == null) {
+            LoginLog.w("token_exchange", diagnoseTokenResponse(raw))
+        }
+        return tokens
     }
 
     private fun postForm(url: String, body: String): String? {
@@ -111,10 +172,15 @@ class GoogleAndroidLogin(
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
             connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            readText(connection)
+            readText(connection, "token_http")
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            LoginLog.e(
+                "token_http",
+                "${error.javaClass.simpleName}: ${error.message}",
+                error,
+            )
             null
         } finally {
             connection.disconnect()
@@ -125,7 +191,7 @@ class GoogleAndroidLogin(
         val connection = open(url, "GET")
         try {
             connection.setRequestProperty("Authorization", "Bearer $accessToken")
-            return readText(connection) ?: throw AuthHttp()
+            return readText(connection, "userinfo_http") ?: throw AuthHttp()
         } finally {
             connection.disconnect()
         }
@@ -135,11 +201,19 @@ class GoogleAndroidLogin(
         if (!url.startsWith("https://")) return null
         val connection = open(url, "GET")
         return try {
-            if (connection.responseCode !in 200..299) return null
+            if (connection.responseCode !in 200..299) {
+                LoginLog.w("avatar_http", "status=${connection.responseCode}")
+                return null
+            }
             connection.inputStream?.use { readCap(it, MAX_PICTURE) }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            LoginLog.e(
+                "avatar_http",
+                "${error.javaClass.simpleName}: ${error.message}",
+                error,
+            )
             null
         } finally {
             connection.disconnect()
@@ -155,12 +229,20 @@ class GoogleAndroidLogin(
         return connection
     }
 
-    private fun readText(connection: HttpURLConnection): String? {
+    private fun readText(connection: HttpURLConnection, step: String): String? {
         val code = connection.responseCode
         val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-        val bytes = stream?.use { readCap(it, MAX_TEXT) } ?: return null
-        if (code !in 200..299) return null
-        return bytes.toString(Charsets.UTF_8)
+        val bytes = stream?.use { readCap(it, MAX_TEXT) }
+        if (bytes == null) {
+            LoginLog.w(step, "status=$code empty_body")
+            return null
+        }
+        val text = bytes.toString(Charsets.UTF_8)
+        if (code !in 200..299) {
+            LoginLog.w(step, "status=$code ${diagnoseTokenResponse(text)}")
+            return null
+        }
+        return text
     }
 
     private fun readCap(input: InputStream, max: Int): ByteArray? {

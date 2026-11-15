@@ -19,6 +19,7 @@ import com.ainscel.ainsmail.security.GoogleAndroidLogin
 import com.ainscel.ainsmail.security.GoogleClient
 import com.ainscel.ainsmail.security.GoogleSignIn
 import com.ainscel.ainsmail.security.GoogleSignInFailure
+import com.ainscel.ainsmail.security.LoginLog
 import com.google.android.gms.common.api.ApiException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -84,7 +85,9 @@ class AccountLoginViewModel(
             state = if (written is AccountWrite.Saved) {
                 state.copy(saving = false, failure = null, savedTick = state.savedTick + 1)
             } else {
-                state.failed(written.toFailure())
+                val reason = written.toFailure()
+                LoginLog.w("qq_save", "failed reason=$reason write=$written")
+                state.failed(reason)
             }
         }
     }
@@ -94,6 +97,7 @@ class AccountLoginViewModel(
         gmailJob = viewModelScope.launch {
             val client = withContext(io) { book.googleClient() }
             if (client == null) {
+                LoginLog.w("start_gmail", "client_not_configured")
                 state = state.failed(LoginFailure.NotConfigured)
                 return@launch
             }
@@ -103,7 +107,11 @@ class AccountLoginViewModel(
                 val result = login.begin(activity, client)
                 if (result.hasResolution()) {
                     val pending = result.pendingIntent
-                        ?: return@launch fail(LoginFailure.Rejected)
+                    if (pending == null) {
+                        LoginLog.w("start_gmail", "hasResolution but pendingIntent null")
+                        fail(LoginFailure.Rejected)
+                        return@launch
+                    }
                     state = state.copy(
                         authorizationRequest = IntentSenderRequest.Builder(pending).build(),
                     )
@@ -111,8 +119,19 @@ class AccountLoginViewModel(
                     finishGmail(client, result)
                 }
             } catch (api: ApiException) {
-                fail(api.toLoginFailure())
-            } catch (_: Exception) {
+                val reason = api.toLoginFailure()
+                LoginLog.e(
+                    "start_gmail_api",
+                    "status=${api.statusCode} message=${api.status.statusMessage} -> $reason",
+                    api,
+                )
+                fail(reason)
+            } catch (error: Exception) {
+                LoginLog.e(
+                    "start_gmail",
+                    "${error.javaClass.simpleName}: ${error.message}",
+                    error,
+                )
                 fail(LoginFailure.Rejected)
             }
         }
@@ -125,20 +144,36 @@ class AccountLoginViewModel(
     fun onAuthorizationResult(activity: Activity, activityResult: ActivityResult) {
         val client = pendingClient
         if (client == null) {
+            LoginLog.w("auth_result", "pendingClient null resultCode=${activityResult.resultCode}")
             fail(LoginFailure.Rejected)
             return
         }
         gmailJob = viewModelScope.launch {
             try {
                 if (activityResult.resultCode != Activity.RESULT_OK) {
+                    LoginLog.w(
+                        "auth_result",
+                        "cancelled_or_failed resultCode=${activityResult.resultCode} hasData=${activityResult.data != null}",
+                    )
                     fail(LoginFailure.Denied)
                     return@launch
                 }
                 val result = login.resultFromIntent(activity, activityResult.data)
                 finishGmail(client, result)
             } catch (api: ApiException) {
-                fail(api.toLoginFailure())
-            } catch (_: Exception) {
+                val reason = api.toLoginFailure()
+                LoginLog.e(
+                    "auth_result_api",
+                    "status=${api.statusCode} message=${api.status.statusMessage} -> $reason",
+                    api,
+                )
+                fail(reason)
+            } catch (error: Exception) {
+                LoginLog.e(
+                    "auth_result",
+                    "${error.javaClass.simpleName}: ${error.message}",
+                    error,
+                )
                 fail(LoginFailure.Rejected)
             }
         }
@@ -159,7 +194,11 @@ class AccountLoginViewModel(
         result: com.google.android.gms.auth.api.identity.AuthorizationResult,
     ) {
         when (val signed = login.complete(client, result)) {
-            is GoogleSignIn.Failed -> fail(signed.reason.toFailure())
+            is GoogleSignIn.Failed -> {
+                val reason = signed.reason.toFailure()
+                LoginLog.w("finish_gmail", "sign_in_failed google=${signed.reason} -> $reason")
+                fail(reason)
+            }
             is GoogleSignIn.Ok -> saveGmail(signed)
         }
     }
@@ -177,8 +216,10 @@ class AccountLoginViewModel(
                 savedTick = state.savedTick + 1,
             )
         } else {
-            val reason = written.toFailure()
-            state.failed(if (reason == LoginFailure.BlankCode) LoginFailure.Rejected else reason)
+            val mapped = written.toFailure()
+            val reason = if (mapped == LoginFailure.BlankCode) LoginFailure.Rejected else mapped
+            LoginLog.w("gmail_save", "failed write=$written -> $reason")
+            state.failed(reason)
         }
     }
 
