@@ -26,18 +26,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ainscel.mymail.R
@@ -105,12 +112,12 @@ fun MailRow(
                             if (mail.unread) MaterialTheme.colorScheme.primary else Color.Transparent,
                         ),
                 )
-                // 姓名过长时右端淡出，标签和时间留在淡出区外面，保持完整。
+                // 姓名过长时右端淡出。标签和时间在这个槽位外面，保持完整。
                 Text(
                     text = mail.fromName,
                     modifier = Modifier
                         .weight(1f)
-                        .fadeEnd(background),
+                        .fixedTextNoReflow(),
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Clip,
@@ -141,27 +148,23 @@ fun MailRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            // 标题比预览更早收束，末端同样淡出，不再用省略号。
-            Box(
-                Modifier
-                    .padding(end = 40.dp)
+            // 标题比预览更早收束。淡出位置用绘制裁切，不靠把文本测窄。
+            Text(
+                text = mail.subject,
+                modifier = Modifier
                     .fillMaxWidth()
-                    .fadeEnd(background),
-            ) {
-                Text(
-                    text = mail.subject,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Clip,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = nameWeight,
-                )
-            }
+                    .fixedTextNoReflow(rightInset = 40.dp),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = nameWeight,
+            )
             Text(
                 text = mail.preview,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fadeEnd(background),
+                    .fixedTextNoReflow(),
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Clip,
@@ -240,18 +243,54 @@ private fun TagChip(tag: MailTag) {
     )
 }
 
-/** 行末约 36dp 过渡到行底色，用来代替省略号。 */
-private fun Modifier.fadeEnd(fadeColor: Color): Modifier = drawWithContent {
-    drawContent()
-    val fade = 36.dp.toPx().coerceAtMost(size.width)
-    if (fade <= 0f) return@drawWithContent
-    drawRect(
-        brush = Brush.horizontalGradient(
-            colors = listOf(Color.Transparent, fadeColor),
-            startX = size.width - fade,
-            endX = size.width,
-        ),
-        topLeft = Offset(size.width - fade, 0f),
-        size = Size(fade, size.height),
-    )
-}
+/**
+ * 文字按固定宽度排版，列表变窄时不再重测。
+ * 看得见的宽度仍跟父布局走，多出来的部分裁掉，右端用透明度淡出，不盖底色。
+ *
+ * 测量宽度必须是常量，而且要比列表栏更宽，拖动分界线时约束才不会变。
+ */
+private val TextMeasureWidth = 4000.dp
+private val TextFadeWidth = 36.dp
+
+private fun Modifier.fixedTextNoReflow(
+    rightInset: Dp = 0.dp,
+    fadeWidth: Dp = TextFadeWidth,
+): Modifier = this
+    .clipToBounds()
+    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+    .drawWithContent {
+        val visibleEnd = (size.width - rightInset.toPx()).coerceIn(0f, size.width)
+        val fade = fadeWidth.toPx().coerceAtMost(visibleEnd)
+        val fadeStart = visibleEnd - fade
+        drawContext.canvas.save()
+        drawContext.canvas.clipRect(0f, 0f, visibleEnd, size.height)
+        drawContent()
+        drawContext.canvas.restore()
+        if (fade <= 0f) return@drawWithContent
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(Color.Black, Color.Transparent),
+                startX = fadeStart,
+                endX = visibleEnd,
+            ),
+            topLeft = Offset(fadeStart, 0f),
+            size = Size(fade, size.height),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+    .layout { measurable, constraints ->
+        val fixedWidth = TextMeasureWidth.roundToPx()
+        val placeable = measurable.measure(
+            constraints.copy(
+                minWidth = 0,
+                maxWidth = fixedWidth,
+            ),
+        )
+        val width = when (val incoming = constraints.maxWidth) {
+            Constraints.Infinity -> placeable.width
+            else -> incoming.coerceAtLeast(0)
+        }
+        layout(width, placeable.height) {
+            placeable.placeRelative(0, 0)
+        }
+    }
