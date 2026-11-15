@@ -31,6 +31,7 @@
     <string name="list_archived">已归档</string>
     <string name="list_tag_limit">一封邮件最多 3 个标签</string>
     <string name="list_tag_needs_type">还没分类的邮件先不添加标签</string>
+    <string name="list_tag_mixed_types">这些邮件类型不同，新标签没法同时放进两个池</string>
     <string name="list_tag_hint">输入标签</string>
     <string name="list_tag_add">添加</string>
     <string name="undo">撤销</string>

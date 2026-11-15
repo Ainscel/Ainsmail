@@ -6,7 +6,16 @@ enum class Provider {
     Gmail,
 }
 
-enum class Folder {
+/** 服务器上的文件夹。存档不是其中一种，它是本机标记。 */
+enum class RemoteFolder {
+    Inbox,
+    Drafts,
+    Sent,
+    Trash,
+}
+
+/** 左侧遮罩里的板块。和服务器文件夹不是同一件事。 */
+enum class Section {
     Inbox,
     Drafts,
     Archive,
@@ -34,6 +43,12 @@ enum class ReadFilter {
     Unread,
 }
 
+/** 全部账号，或某一个账号。自建聚合等有了数据再加第三支。 */
+sealed interface MailboxScope {
+    data object All : MailboxScope
+    data class Account(val id: String) : MailboxScope
+}
+
 data class Account(
     val id: String,
     val name: String,
@@ -42,20 +57,14 @@ data class Account(
 )
 
 /**
- * 标签词属于某一个类型下的一个池。
- * 模型可以跨类型沿用这个词，所以它的类型可以和所在邮件的类型不同。
- * 用户改邮件分类时，不改这里。
+ * 列表和正文暂时共用这一份。
+ * [body] 只是内存里的占位正文，列表投影不准读它。清洗后的 HTML 和 Markdown 以后落文件。
  */
-data class MailTag(
-    val name: String,
-    val pool: TagPool,
-    val type: MailType,
-)
-
 data class Mail(
     val id: String,
     val accountId: String,
-    val folder: Folder,
+    val remoteFolder: RemoteFolder,
+    val archived: Boolean,
     val fromName: String,
     val subject: String,
     val preview: String,
@@ -63,5 +72,19 @@ data class Mail(
     val timeMillis: Long,
     val unread: Boolean,
     val type: MailType?,
-    val tags: List<MailTag>,
+    val tagNames: List<String>,
 )
+
+fun Mail.inScope(scope: MailboxScope): Boolean = when (scope) {
+    MailboxScope.All -> true
+    is MailboxScope.Account -> accountId == scope.id
+}
+
+/** 存档板块只看收件箱里被本机归档的信。别的文件夹不因为这个标记改归属。 */
+fun Mail.inSection(section: Section): Boolean = when (section) {
+    Section.Inbox -> remoteFolder == RemoteFolder.Inbox && !archived
+    Section.Drafts -> remoteFolder == RemoteFolder.Drafts
+    Section.Archive -> remoteFolder == RemoteFolder.Inbox && archived
+    Section.Sent -> remoteFolder == RemoteFolder.Sent
+    Section.Trash -> remoteFolder == RemoteFolder.Trash
+}

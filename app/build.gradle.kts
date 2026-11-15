@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -58,4 +60,15 @@ dependencies {
     implementation(libs.androidx.navigation3.ui)
     implementation(libs.kotlinx.serialization.core)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    testImplementation(libs.junit)
+}
+
+// AGP 9 自带的 Kotlin 编译把测试类放在 built_in_kotlinc，没有 Java 源时测试进程找不到它们。
+tasks.withType<Test>().configureEach {
+    val variant = name.removePrefix("test").removeSuffix("UnitTest")
+    val kotlinClasses = layout.buildDirectory.dir(
+        "intermediates/built_in_kotlinc/${variant.replaceFirstChar { it.lowercase() }}UnitTest/compile${variant}UnitTestKotlin/classes",
+    )
+    classpath += files(kotlinClasses)
+    setTestClassesDirs(files(testClassesDirs, kotlinClasses))
 }

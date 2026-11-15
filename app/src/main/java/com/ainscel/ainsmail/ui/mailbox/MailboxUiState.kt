@@ -1,17 +1,19 @@
 package com.ainscel.ainsmail.ui.mailbox
 
 import androidx.compose.runtime.Immutable
-import com.ainscel.ainsmail.model.Folder
 import com.ainscel.ainsmail.model.MailType
+import com.ainscel.ainsmail.model.MailboxScope
 import com.ainscel.ainsmail.model.ReadFilter
+import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.model.TagPool
 
 @Immutable
 data class MailboxUiState(
-    val revision: Long,
-    val accountId: String?,
+    val scope: MailboxScope,
     val selectedAccountName: String?,
-    val folder: Folder,
+    val section: Section,
+    /** 当前账号范围和板块里的信。筛选不放进来，打开的正文不会因为筛选被关掉。 */
+    val sectionMailIds: Set<String>,
     val rows: List<MailRowUi>,
     val readFilter: ReadFilter,
     val selectedTagNames: Set<String>,
@@ -20,7 +22,7 @@ data class MailboxUiState(
     val selectedCount: Int,
     val tagGroups: List<TagGroupUi>,
     val accounts: List<AccountUi>,
-    val notice: NoticeUi?,
+    val notice: Notice?,
 )
 
 @Immutable
@@ -63,13 +65,6 @@ data class AccountUi(
 )
 
 @Immutable
-data class NoticeUi(
-    val id: Long,
-    val text: String,
-    val canUndo: Boolean,
-)
-
-@Immutable
 data class MailDetailUi(
     val subject: String,
     val fromName: String,
@@ -78,8 +73,8 @@ data class MailDetailUi(
 )
 
 sealed interface MailboxIntent {
-    data class SelectAccount(val id: String?) : MailboxIntent
-    data class SelectFolder(val folder: Folder) : MailboxIntent
+    data class SelectScope(val scope: MailboxScope) : MailboxIntent
+    data class SelectSection(val section: Section) : MailboxIntent
     data class SetReadFilter(val filter: ReadFilter) : MailboxIntent
     data class ToggleTagFilter(val name: String) : MailboxIntent
     data class SetTypeFilter(val type: MailType?) : MailboxIntent
@@ -87,11 +82,15 @@ sealed interface MailboxIntent {
     data object ExitMultiSelect : MailboxIntent
     data class ToggleSelected(val id: String) : MailboxIntent
     data object MarkVisibleRead : MailboxIntent
-    data class DeleteSelected(val message: String) : MailboxIntent
-    data class DeleteMail(val id: String, val message: String) : MailboxIntent
-    data class ArchiveSelected(val message: String) : MailboxIntent
+    data object DeleteSelected : MailboxIntent
+    data class DeleteMail(val id: String) : MailboxIntent
+    data object ArchiveSelected : MailboxIntent
     data class SetType(val type: MailType) : MailboxIntent
-    data class ShowMessage(val text: String) : MailboxIntent
+    data class AddTag(val name: String) : MailboxIntent
+    data object ShowLoginPending : MailboxIntent
+    data object ShowGroupPending : MailboxIntent
+    data object ShowOriginalPending : MailboxIntent
+    data object ShowEditPending : MailboxIntent
     data class ConsumeNotice(val id: Long) : MailboxIntent
     data object Undo : MailboxIntent
 }
@@ -101,4 +100,5 @@ enum class AddTagResult {
     Blank,
     NeedsType,
     AtLimit,
+    MixedTypes,
 }

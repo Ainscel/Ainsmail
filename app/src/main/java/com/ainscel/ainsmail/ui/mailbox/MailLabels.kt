@@ -2,18 +2,18 @@ package com.ainscel.ainsmail.ui.mailbox
 
 import androidx.annotation.StringRes
 import com.ainscel.ainsmail.R
-import com.ainscel.ainsmail.model.Folder
 import com.ainscel.ainsmail.model.MailType
 import com.ainscel.ainsmail.model.ReadFilter
+import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.model.TagPool
 
 @StringRes
-fun Folder.title(): Int = when (this) {
-    Folder.Inbox -> R.string.folder_inbox
-    Folder.Drafts -> R.string.folder_drafts
-    Folder.Archive -> R.string.folder_archive
-    Folder.Sent -> R.string.folder_sent
-    Folder.Trash -> R.string.folder_trash
+fun Section.title(): Int = when (this) {
+    Section.Inbox -> R.string.folder_inbox
+    Section.Drafts -> R.string.folder_drafts
+    Section.Archive -> R.string.folder_archive
+    Section.Sent -> R.string.folder_sent
+    Section.Trash -> R.string.folder_trash
 }
 
 @StringRes

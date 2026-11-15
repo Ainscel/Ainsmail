@@ -7,21 +7,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
@@ -30,6 +25,8 @@ import com.ainscel.ainsmail.ui.shell.LocalDetailFullscreen
 import com.ainscel.ainsmail.ui.shell.LocalDetailHandlesBack
 import com.ainscel.ainsmail.ui.shell.MailCapsuleHeight
 import com.ainscel.ainsmail.ui.shell.MailChromeInset
+import com.ainscel.ainsmail.ui.shell.MailRoundButton
+import com.ainscel.ainsmail.ui.shell.SplitFullscreenButton
 import com.ainscel.ainsmail.ui.shell.holdWidthUntilSettled
 import com.ainscel.ainsmail.ui.shell.horizontalDragOrScroll
 
@@ -110,58 +107,20 @@ fun MailDetailPane(
             verticalArrangement = Arrangement.spacedBy(DetailActionGap),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            RoundMailButton(
+            MailRoundButton(
                 icon = MailIcons.OpenInNew,
                 description = stringResource(R.string.detail_original),
                 onClick = onOriginalLayout,
             )
-            RoundMailButton(
+            MailRoundButton(
                 icon = Icons.Filled.Delete,
                 description = stringResource(R.string.list_delete),
                 onClick = onDelete,
             )
-            RoundMailButton(
+            MailRoundButton(
                 icon = Icons.Filled.Edit,
                 description = stringResource(R.string.detail_edit),
                 onClick = onEdit,
-            )
-        }
-    }
-}
-
-/** 宽屏右栏右上角的全屏按钮。没有分栏时不显示。 */
-@Composable
-fun SplitFullscreenButton(modifier: Modifier = Modifier) {
-    val fullscreen = LocalDetailFullscreen.current ?: return
-    RoundMailButton(
-        icon = if (fullscreen.isActive()) MailIcons.FullscreenExit else MailIcons.Fullscreen,
-        description = stringResource(
-            if (fullscreen.isActive()) R.string.detail_exit_fullscreen else R.string.detail_fullscreen,
-        ),
-        onClick = fullscreen.toggle,
-        modifier = modifier,
-    )
-}
-
-@Composable
-private fun RoundMailButton(
-    icon: ImageVector,
-    description: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        onClick = onClick,
-        modifier = modifier.size(MailCapsuleHeight),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shadowElevation = 2.dp,
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = description,
-                tint = MaterialTheme.colorScheme.onSurface,
             )
         }
     }

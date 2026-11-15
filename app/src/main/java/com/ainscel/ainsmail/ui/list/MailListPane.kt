@@ -22,7 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
-import com.ainscel.ainsmail.model.Folder
+import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.ui.mailbox.AddTagResult
 import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
 import com.ainscel.ainsmail.ui.mailbox.MailboxUiState
@@ -37,8 +37,7 @@ private const val RowSelecting = "selecting"
 fun MailListPane(
     state: MailboxUiState,
     openMailId: String?,
-    onIntent: (MailboxIntent) -> Unit,
-    onAddTag: (String) -> AddTagResult,
+    onIntent: (MailboxIntent) -> AddTagResult?,
     onOpenMail: (String) -> Unit,
     onCompose: () -> Unit,
     onOpenOverlay: () -> Unit,
@@ -54,12 +53,10 @@ fun MailListPane(
     var tagDialog by rememberSaveable { mutableStateOf(false) }
     var draftTag by rememberSaveable { mutableStateOf("") }
     var capsuleExpanded by rememberSaveable { mutableStateOf(false) }
-    val deletedMessage = stringResource(R.string.list_deleted)
-    val archivedMessage = stringResource(R.string.list_archived)
-    val tagLimitMessage = stringResource(R.string.list_tag_limit)
-    val tagNeedsTypeMessage = stringResource(R.string.list_tag_needs_type)
-
-    LaunchedEffect(state.accountId, state.folder) {
+    fun perform(intent: MailboxIntent) {
+        onIntent(intent)
+    }
+    LaunchedEffect(state.scope, state.section) {
         listState.scrollToItem(0)
     }
 
@@ -69,24 +66,24 @@ fun MailListPane(
                 MultiSelectBar(
                     count = state.selectedCount,
                     enabled = state.selectedCount > 0,
-                    onDelete = { onIntent(MailboxIntent.DeleteSelected(deletedMessage)) },
+                    onDelete = { perform(MailboxIntent.DeleteSelected) },
                     onChangeType = { typeDialog = true },
                     onAddTag = { tagDialog = true },
-                    onArchive = { onIntent(MailboxIntent.ArchiveSelected(archivedMessage)) },
-                    onCancel = { onIntent(MailboxIntent.ExitMultiSelect) },
+                    onArchive = { perform(MailboxIntent.ArchiveSelected) },
+                    onCancel = { perform(MailboxIntent.ExitMultiSelect) },
                 )
             } else {
                 ListTopBar(
-                    title = stringResource(state.folder.title()),
+                    title = stringResource(state.section.title()),
                     onTitleClick = onOpenOverlay,
                     menuOpen = menuOpen,
                     onMenuOpen = { menuOpen = true },
                     onMenuDismiss = { menuOpen = false },
                     onFilter = { filterOpen = true },
-                    onMarkRead = { onIntent(MailboxIntent.MarkVisibleRead) },
+                    onMarkRead = { perform(MailboxIntent.MarkVisibleRead) },
                     onMultiSelect = {
                         menuOpen = false
-                        onIntent(MailboxIntent.EnterMultiSelect)
+                        perform(MailboxIntent.EnterMultiSelect)
                     },
                     onSearch = {
                         menuOpen = false
@@ -116,7 +113,7 @@ fun MailListPane(
                             onFinish = { onOverlayRelease() },
                         ),
                     contentPadding = PaddingValues(
-                        bottom = if (state.folder == Folder.Inbox) 88.dp else 16.dp,
+                        bottom = if (state.section == Section.Inbox) 88.dp else 16.dp,
                     ),
                 ) {
                     items(
@@ -130,27 +127,27 @@ fun MailListPane(
                             multiSelect = state.multiSelect,
                             onClick = {
                                 if (state.multiSelect) {
-                                    onIntent(MailboxIntent.ToggleSelected(row.id))
+                                    perform(MailboxIntent.ToggleSelected(row.id))
                                 } else {
                                     onOpenMail(row.id)
                                 }
                             },
-                            onChecked = { onIntent(MailboxIntent.ToggleSelected(row.id)) },
+                            onChecked = { perform(MailboxIntent.ToggleSelected(row.id)) },
                         )
                     }
                 }
             }
         }
-        if (state.folder == Folder.Inbox) {
+        if (state.section == Section.Inbox) {
             TypeCapsule(
                 expanded = capsuleExpanded,
                 selected = state.typeFilter,
                 onExpand = { capsuleExpanded = true },
                 onCollapse = {
-                    onIntent(MailboxIntent.SetTypeFilter(null))
+                    perform(MailboxIntent.SetTypeFilter(null))
                     capsuleExpanded = false
                 },
-                onSelect = { onIntent(MailboxIntent.SetTypeFilter(it)) },
+                onSelect = { perform(MailboxIntent.SetTypeFilter(it)) },
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(MailChromeInset)
@@ -169,18 +166,13 @@ fun MailListPane(
         onDismissType = { typeDialog = false },
         onDismissTag = { tagDialog = false },
         onPickType = {
-            onIntent(MailboxIntent.SetType(it))
+            perform(MailboxIntent.SetType(it))
             typeDialog = false
         },
         onConfirmTag = {
-            when (onAddTag(draftTag)) {
-                AddTagResult.AtLimit -> onIntent(MailboxIntent.ShowMessage(tagLimitMessage))
-                AddTagResult.NeedsType -> onIntent(MailboxIntent.ShowMessage(tagNeedsTypeMessage))
-                AddTagResult.Added -> {
-                    draftTag = ""
-                    tagDialog = false
-                }
-                AddTagResult.Blank -> Unit
+            if (onIntent(MailboxIntent.AddTag(draftTag)) == AddTagResult.Added) {
+                draftTag = ""
+                tagDialog = false
             }
         },
     )
@@ -189,8 +181,8 @@ fun MailListPane(
             readFilter = state.readFilter,
             selectedTags = state.selectedTagNames,
             groups = state.tagGroups,
-            onReadFilter = { onIntent(MailboxIntent.SetReadFilter(it)) },
-            onToggleTag = { onIntent(MailboxIntent.ToggleTagFilter(it)) },
+            onReadFilter = { perform(MailboxIntent.SetReadFilter(it)) },
+            onToggleTag = { perform(MailboxIntent.ToggleTagFilter(it)) },
             onDismiss = { filterOpen = false },
         )
     }

@@ -25,7 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ainscel.ainsmail.R
-import com.ainscel.ainsmail.ui.detail.SplitFullscreenButton
+import com.ainscel.ainsmail.ui.shell.SplitFullscreenButton
 import com.ainscel.ainsmail.ui.shell.LocalDetailHandlesBack
 import com.ainscel.ainsmail.ui.shell.MailCapsuleHeight
 import com.ainscel.ainsmail.ui.shell.MailChromeInset

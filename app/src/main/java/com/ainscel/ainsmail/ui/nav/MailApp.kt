@@ -24,52 +24,33 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation3.runtime.NavKey
-import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
-import androidx.navigation3.ui.NavDisplay
 import com.ainscel.ainsmail.R
-import com.ainscel.ainsmail.ui.detail.ComposePlaceholder
-import com.ainscel.ainsmail.ui.detail.MailDetailPane
-import com.ainscel.ainsmail.ui.list.MailListPane
+import com.ainscel.ainsmail.data.SampleAccounts
+import com.ainscel.ainsmail.data.sampleCatalog
+import com.ainscel.ainsmail.data.sampleMails
+import com.ainscel.ainsmail.model.MailboxScope
 import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
 import com.ainscel.ainsmail.ui.mailbox.MailboxViewModel
-import com.ainscel.ainsmail.ui.settings.SettingsHomePane
-import com.ainscel.ainsmail.ui.settings.SettingsSection
-import com.ainscel.ainsmail.ui.settings.SettingsSectionPane
 import com.ainscel.ainsmail.ui.shell.AccountOverlay
 import com.ainscel.ainsmail.ui.shell.OverlayController
 import com.ainscel.ainsmail.ui.shell.isWideWindow
-import kotlinx.serialization.Serializable
-
-@Serializable
-data object MailListRoute : NavKey
-
-@Serializable
-data class MailDetailRoute(val mailId: String) : NavKey
-
-@Serializable
-data object SettingsHomeRoute : NavKey
-
-@Serializable
-data class SettingsSectionRoute(val section: SettingsSection) : NavKey
-
-@Serializable
-data class ComposeRoute(val mailId: String? = null) : NavKey
 
 @Composable
 fun MailApp(modifier: Modifier = Modifier) {
-    val mailbox = viewModel<MailboxViewModel>()
+    val mailboxFactory = remember {
+        MailboxViewModel.factory(
+            accounts = SampleAccounts,
+            mails = sampleMails(System.currentTimeMillis()),
+            catalog = sampleCatalog(),
+        )
+    }
+    val mailbox = viewModel<MailboxViewModel>(factory = mailboxFactory)
     val state = mailbox.state
     val backStack = rememberNavBackStack(MailListRoute)
     val overlay = remember { OverlayController() }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val originalPending = stringResource(R.string.detail_original_pending)
-    val editPending = stringResource(R.string.detail_edit_pending)
-    val deletedMessage = stringResource(R.string.list_deleted)
-    val loginPending = stringResource(R.string.account_add_login_pending)
-    val groupPending = stringResource(R.string.account_add_group_pending)
     val allAccounts = stringResource(R.string.account_all)
     var addDialog by rememberSaveable { mutableStateOf(false) }
     val splitFraction = rememberSaveable { mutableFloatStateOf(0.40f) }
@@ -88,12 +69,12 @@ fun MailApp(modifier: Modifier = Modifier) {
     MailboxNoticeEffect(
         notice = state.notice,
         hostState = snackbarHostState,
-        onUndo = { mailbox.onIntent(MailboxIntent.Undo) },
-        onConsumed = { mailbox.onIntent(MailboxIntent.ConsumeNotice(it)) },
+        onUndo = { mailbox.perform(MailboxIntent.Undo) },
+        onConsumed = { mailbox.perform(MailboxIntent.ConsumeNotice(it)) },
     )
-    LaunchedEffect(state.accountId, state.folder, state.revision) {
+    LaunchedEffect(state.sectionMailIds) {
         val openId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId ?: return@LaunchedEffect
-        if (!mailbox.staysOpen(openId)) backStack.removeAll { it is MailDetailRoute }
+        if (openId !in state.sectionMailIds) backStack.removeAll { it is MailDetailRoute }
     }
     OverlayBackHandler(overlay, scope)
 
@@ -107,86 +88,33 @@ fun MailApp(modifier: Modifier = Modifier) {
             val panelWidth = minOf(300.dp, maxWidth * 0.88f)
             val panelWidthPx = with(LocalDensity.current) { panelWidth.toPx() }
             Box(Modifier.fillMaxSize()) {
-                NavDisplay(
+                MailNavHost(
+                    mailbox = mailbox,
                     backStack = backStack,
-                    modifier = Modifier.fillMaxSize(),
-                    onBack = {
-                        if (backStack.size > 1) {
-                            backStack.removeLastOrNull()
-                        } else {
-                            (context as? Activity)?.finish()
-                        }
-                    },
-                    sceneStrategies = listOf(strategy),
-                    entryProvider = entryProvider {
-                        entry<MailListRoute>(
-                            metadata = TwoPaneStrategy.primaryPane(PrimaryEmpty.Detail),
-                        ) {
-                            MailListPane(
-                                state = state,
-                                openMailId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId,
-                                onIntent = mailbox::onIntent,
-                                onAddTag = mailbox::addTag,
-                                onOpenMail = { id -> openMail(backStack, id) },
-                                onCompose = { backStack.add(ComposeRoute()) },
-                                onOpenOverlay = { overlay.open(scope) },
-                                onOverlayDrag = { overlay.dragBy(it, panelWidthPx) },
-                                onOverlayRelease = { overlay.release(scope) },
-                            )
-                        }
-                        entry<MailDetailRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->
-                            MailDetailPane(
-                                detail = mailbox.detail(route.mailId),
-                                onClose = { backStack.removeAll { it is MailDetailRoute } },
-                                onOriginalLayout = { mailbox.onIntent(MailboxIntent.ShowMessage(originalPending)) },
-                                onEdit = { mailbox.onIntent(MailboxIntent.ShowMessage(editPending)) },
-                                onDelete = {
-                                    mailbox.onIntent(MailboxIntent.DeleteMail(route.mailId, deletedMessage))
-                                    backStack.removeAll { it is MailDetailRoute }
-                                },
-                            )
-                        }
-                        entry<SettingsHomeRoute>(
-                            metadata = TwoPaneStrategy.primaryPane(PrimaryEmpty.Settings),
-                        ) {
-                            SettingsHomePane(
-                                selected = backStack.filterIsInstance<SettingsSectionRoute>().lastOrNull()?.section,
-                                onBack = {
-                                    backStack.removeAll {
-                                        it is SettingsHomeRoute || it is SettingsSectionRoute
-                                    }
-                                },
-                                onOpen = { section -> openSettingsSection(backStack, section) },
-                            )
-                        }
-                        entry<SettingsSectionRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->
-                            SettingsSectionPane(
-                                section = route.section,
-                                onBack = { backStack.removeLastOrNull() },
-                            )
-                        }
-                        entry<ComposeRoute> { route ->
-                            ComposePlaceholder(
-                                replySubject = route.mailId?.let(mailbox::subjectOf),
-                                onBack = { backStack.removeLastOrNull() },
-                            )
-                        }
-                    },
+                    overlay = overlay,
+                    scope = scope,
+                    strategy = strategy,
+                    panelWidthPx = panelWidthPx,
+                    onExit = { (context as? Activity)?.finish() },
                 )
                 AccountOverlay(
                     progress = overlay::progress,
                     panelWidth = panelWidth,
                     panelWidthPx = panelWidthPx,
                     accounts = state.accounts,
-                    selectedAccountId = state.accountId,
+                    selectedAccountId = (state.scope as? MailboxScope.Account)?.id,
                     currentName = state.selectedAccountName ?: allAccounts,
-                    folder = state.folder,
-                    onSelectAccount = {
-                        mailbox.onIntent(MailboxIntent.SelectAccount(it))
+                    section = state.section,
+                    onSelectAccount = { id ->
+                        mailbox.perform(
+                            MailboxIntent.SelectScope(
+                                if (id == null) MailboxScope.All else MailboxScope.Account(id),
+                            ),
+                        )
                         overlay.close(scope)
                     },
-                    onSelectFolder = {
-                        mailbox.onIntent(MailboxIntent.SelectFolder(it))
+                    onSelectSection = {
+                        mailbox.perform(MailboxIntent.SelectSection(it))
                         overlay.close(scope)
                     },
                     onAdd = { addDialog = true },
@@ -207,29 +135,12 @@ fun MailApp(modifier: Modifier = Modifier) {
             onDismiss = { addDialog = false },
             onLogin = {
                 addDialog = false
-                mailbox.onIntent(MailboxIntent.ShowMessage(loginPending))
+                mailbox.perform(MailboxIntent.ShowLoginPending)
             },
             onGroup = {
                 addDialog = false
-                mailbox.onIntent(MailboxIntent.ShowMessage(groupPending))
+                mailbox.perform(MailboxIntent.ShowGroupPending)
             },
         )
     }
-}
-
-private fun openSettingsSection(
-    backStack: androidx.navigation3.runtime.NavBackStack<NavKey>,
-    section: SettingsSection,
-) {
-    val current = backStack.lastOrNull()
-    if (current is SettingsSectionRoute && current.section == section) return
-    backStack.removeAll { it is SettingsSectionRoute }
-    backStack.add(SettingsSectionRoute(section))
-}
-
-private fun openMail(backStack: androidx.navigation3.runtime.NavBackStack<NavKey>, id: String) {
-    val current = backStack.lastOrNull()
-    if (current is MailDetailRoute && current.mailId == id) return
-    backStack.removeAll { it is MailDetailRoute }
-    backStack.add(MailDetailRoute(id))
 }

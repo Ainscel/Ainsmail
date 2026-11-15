@@ -28,7 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.ainscel.ainsmail.model.Folder
+import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.ui.mailbox.AccountUi
 import com.ainscel.ainsmail.ui.mailbox.title
 import kotlin.math.abs
@@ -42,9 +42,9 @@ fun AccountOverlay(
     accounts: List<AccountUi>,
     selectedAccountId: String?,
     currentName: String,
-    folder: Folder,
+    section: Section,
     onSelectAccount: (String?) -> Unit,
-    onSelectFolder: (Folder) -> Unit,
+    onSelectSection: (Section) -> Unit,
     onAdd: () -> Unit,
     onSettings: () -> Unit,
     onClose: () -> Unit,
@@ -94,10 +94,10 @@ fun AccountOverlay(
                     .fillMaxHeight()
                     .background(MaterialTheme.colorScheme.outlineVariant),
             )
-            FolderColumn(
+            SectionColumn(
                 currentName = currentName,
-                folder = folder,
-                onSelectFolder = onSelectFolder,
+                section = section,
+                onSelectSection = onSelectSection,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
@@ -107,10 +107,10 @@ fun AccountOverlay(
 }
 
 @Composable
-private fun FolderColumn(
+private fun SectionColumn(
     currentName: String,
-    folder: Folder,
-    onSelectFolder: (Folder) -> Unit,
+    section: Section,
+    onSelectSection: (Section) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -122,8 +122,8 @@ private fun FolderColumn(
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(bottom = 8.dp, start = 8.dp),
         )
-        Folder.entries.forEach { item ->
-            val selected = item == folder
+        Section.entries.forEach { item ->
+            val selected = item == section
             Text(
                 text = stringResource(item.title()),
                 style = MaterialTheme.typography.bodyLarge,
@@ -134,7 +134,7 @@ private fun FolderColumn(
                     .background(
                         if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
                     )
-                    .clickable { onSelectFolder(item) }
+                    .clickable { onSelectSection(item) }
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             )
         }

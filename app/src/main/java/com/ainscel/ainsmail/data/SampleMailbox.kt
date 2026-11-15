@@ -1,16 +1,31 @@
 package com.ainscel.ainsmail.data
 
 import com.ainscel.ainsmail.model.Account
-import com.ainscel.ainsmail.model.Folder
 import com.ainscel.ainsmail.model.Mail
-import com.ainscel.ainsmail.model.MailTag
 import com.ainscel.ainsmail.model.MailType
 import com.ainscel.ainsmail.model.Provider
+import com.ainscel.ainsmail.model.RemoteFolder
+import com.ainscel.ainsmail.model.TagCatalog
 import com.ainscel.ainsmail.model.TagPool
+import com.ainscel.ainsmail.model.TagWord
 
 val SampleAccounts = listOf(
     Account(id = "a1", name = "Ainscel", address = "ainscel@gmail.com", provider = Provider.Gmail),
     Account(id = "a2", name = "工作", address = "work@qq.com", provider = Provider.Qq),
+)
+
+/** 重点的活跃池带上需求里的起点。其余词来自下面的假邮件。 */
+fun sampleCatalog(): TagCatalog = TagCatalog(
+    listOf(
+        TagWord("同事", MailType.Important, TagPool.Active),
+        TagWord("公司", MailType.Important, TagPool.Active),
+        TagWord("AI", MailType.Important, TagPool.Active),
+        TagWord("纪要", MailType.Important, TagPool.Pending),
+        TagWord("登录", MailType.Verify, TagPool.Pending),
+        TagWord("安全", MailType.Notice, TagPool.Active),
+        TagWord("账单", MailType.Notice, TagPool.Stale),
+        TagWord("航司", MailType.Promo, TagPool.Active),
+    ),
 )
 
 fun sampleMails(now: Long): List<Mail> {
@@ -26,10 +41,7 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(18),
             unread = true,
             type = MailType.Important,
-            tags = listOf(
-                MailTag("同事", TagPool.Active, MailType.Important),
-                MailTag("公司", TagPool.Active, MailType.Important),
-            ),
+            tagNames = listOf("同事", "公司"),
         ),
         mail(
             id = "m2",
@@ -41,7 +53,7 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(46),
             unread = true,
             type = MailType.Verify,
-            tags = listOf(MailTag("登录", TagPool.Pending, MailType.Verify)),
+            tagNames = listOf("登录"),
         ),
         mail(
             id = "m3",
@@ -53,7 +65,7 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(180),
             unread = false,
             type = MailType.Notice,
-            tags = listOf(MailTag("账单", TagPool.Stale, MailType.Notice)),
+            tagNames = listOf("账单"),
         ),
         mail(
             id = "m4",
@@ -65,7 +77,7 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 26),
             unread = true,
             type = MailType.Promo,
-            tags = listOf(MailTag("航司", TagPool.Active, MailType.Promo)),
+            tagNames = listOf("航司"),
         ),
         mail(
             id = "m5",
@@ -77,7 +89,7 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 30),
             unread = false,
             type = MailType.Notice,
-            tags = listOf(MailTag("安全", TagPool.Active, MailType.Notice)),
+            tagNames = listOf("安全"),
         ),
         mail(
             id = "m6",
@@ -89,7 +101,6 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 24 * 3),
             unread = false,
             type = MailType.Spam,
-            tags = emptyList(),
         ),
         mail(
             id = "m7",
@@ -101,7 +112,7 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 24 * 2),
             unread = true,
             type = MailType.Important,
-            tags = listOf(MailTag("AI", TagPool.Active, MailType.Important)),
+            tagNames = listOf("AI"),
         ),
         mail(
             id = "m8",
@@ -113,11 +124,7 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 24 * 4),
             unread = false,
             type = MailType.Important,
-            tags = listOf(
-                MailTag("公司", TagPool.Active, MailType.Important),
-                MailTag("同事", TagPool.Active, MailType.Important),
-                MailTag("纪要", TagPool.Pending, MailType.Important),
-            ),
+            tagNames = listOf("公司", "同事", "纪要"),
         ),
         mail(
             id = "m9",
@@ -129,7 +136,6 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(90),
             unread = true,
             type = null,
-            tags = emptyList(),
         ),
         mail(
             id = "m10",
@@ -141,8 +147,7 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 5),
             unread = false,
             type = MailType.Important,
-            tags = emptyList(),
-            folder = Folder.Drafts,
+            remoteFolder = RemoteFolder.Drafts,
         ),
         mail(
             id = "m11",
@@ -154,8 +159,8 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(12),
             unread = false,
             type = MailType.Important,
-            tags = listOf(MailTag("同事", TagPool.Active, MailType.Important)),
-            folder = Folder.Sent,
+            tagNames = listOf("同事"),
+            remoteFolder = RemoteFolder.Sent,
         ),
         mail(
             id = "m12",
@@ -167,8 +172,8 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 24 * 20),
             unread = false,
             type = MailType.Important,
-            tags = listOf(MailTag("公司", TagPool.Active, MailType.Important)),
-            folder = Folder.Archive,
+            tagNames = listOf("公司"),
+            archived = true,
         ),
         mail(
             id = "m13",
@@ -180,8 +185,7 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 24 * 6),
             unread = false,
             type = MailType.Promo,
-            tags = emptyList(),
-            folder = Folder.Trash,
+            remoteFolder = RemoteFolder.Trash,
         ),
     )
 }
@@ -196,12 +200,14 @@ private fun mail(
     time: Long,
     unread: Boolean,
     type: MailType?,
-    tags: List<MailTag>,
-    folder: Folder = Folder.Inbox,
+    tagNames: List<String> = emptyList(),
+    remoteFolder: RemoteFolder = RemoteFolder.Inbox,
+    archived: Boolean = false,
 ): Mail = Mail(
     id = id,
     accountId = accountId,
-    folder = folder,
+    remoteFolder = remoteFolder,
+    archived = archived,
     fromName = from,
     subject = subject,
     preview = preview,
@@ -209,5 +215,5 @@ private fun mail(
     timeMillis = time,
     unread = unread,
     type = type,
-    tags = tags,
+    tagNames = tagNames,
 )

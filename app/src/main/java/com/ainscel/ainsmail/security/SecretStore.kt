@@ -17,7 +17,7 @@ import javax.crypto.spec.GCMParameterSpec
 /**
  * 用系统密钥库加密本地配置。
  * 现在保存全局的 DeepSeek 配置，以及用户自己填写的 Google 桌面客户端。
- * 按账号的刷新令牌和 QQ 授权码以后放进同一份文件，不写日志。
+ * 按账号的刷新令牌和 QQ 授权码以后放进同一份加密文件里的另一段记录，不加进下面的字段，不写日志。
  */
 class SecretStore(context: Context) {
     private val file = File(context.applicationContext.filesDir, FILE_NAME)
