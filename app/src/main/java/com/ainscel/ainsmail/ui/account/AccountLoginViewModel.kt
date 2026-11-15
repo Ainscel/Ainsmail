@@ -150,13 +150,16 @@ class AccountLoginViewModel(
         }
         gmailJob = viewModelScope.launch {
             try {
+                // 非 OK 时 Intent 里仍可能带着 ApiException（如 DEVELOPER_ERROR=10），先解析再归类。
                 if (activityResult.resultCode != Activity.RESULT_OK) {
                     LoginLog.w(
                         "auth_result",
-                        "cancelled_or_failed resultCode=${activityResult.resultCode} hasData=${activityResult.data != null}",
+                        "non_ok resultCode=${activityResult.resultCode} hasData=${activityResult.data != null}",
                     )
-                    fail(LoginFailure.Denied)
-                    return@launch
+                    if (activityResult.data == null) {
+                        fail(LoginFailure.Denied)
+                        return@launch
+                    }
                 }
                 val result = login.resultFromIntent(activity, activityResult.data)
                 finishGmail(client, result)
