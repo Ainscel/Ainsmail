@@ -92,18 +92,11 @@ fun MailDetailPane(
                 Modifier.height(MailCapsuleHeight * 3 + DetailActionGap * 2 + MailChromeInset + 8.dp),
             )
         }
-        if (fullscreen != null) {
-            RoundMailButton(
-                icon = if (fullscreen.active) MailIcons.FullscreenExit else MailIcons.Fullscreen,
-                description = stringResource(
-                    if (fullscreen.active) R.string.detail_exit_fullscreen else R.string.detail_fullscreen,
-                ),
-                onClick = fullscreen.toggle,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = MailChromeInset, end = MailChromeInset),
-            )
-        }
+        SplitFullscreenButton(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = MailChromeInset, end = MailChromeInset),
+        )
         // 从下往上是编辑、删除、按原版式查看。最底下那颗和列表分类胶囊处于同一高度。
         Column(
             Modifier
@@ -129,6 +122,20 @@ fun MailDetailPane(
             )
         }
     }
+}
+
+/** 宽屏右栏右上角的全屏按钮。没有分栏时不显示。 */
+@Composable
+fun SplitFullscreenButton(modifier: Modifier = Modifier) {
+    val fullscreen = LocalDetailFullscreen.current ?: return
+    RoundMailButton(
+        icon = if (fullscreen.active) MailIcons.FullscreenExit else MailIcons.Fullscreen,
+        description = stringResource(
+            if (fullscreen.active) R.string.detail_exit_fullscreen else R.string.detail_fullscreen,
+        ),
+        onClick = fullscreen.toggle,
+        modifier = modifier,
+    )
 }
 
 @Composable

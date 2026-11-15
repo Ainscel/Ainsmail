@@ -35,15 +35,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlin.math.abs
 import kotlin.math.roundToInt
-import androidx.navigation3.runtime.NavEntry
-import androidx.navigation3.runtime.NavKey
-import androidx.navigation3.runtime.NavMetadataKey
-import androidx.navigation3.runtime.contains
-import androidx.navigation3.runtime.metadata
-import androidx.navigation3.scene.Scene
-import androidx.navigation3.scene.SceneStrategy
-import androidx.navigation3.scene.SceneStrategyScope
-import com.ainscel.mymail.ui.detail.EmptyDetail
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -68,7 +59,7 @@ private const val MAX_LIST_FRACTION = 0.60f
 private val HandleWidth = 20.dp
 private val EdgeHandleWidth = 36.dp
 
-/** 手指进入屏幕左缘这一带，才取消阻尼并把正文收成全屏。 */
+/** 手指进入屏幕左缘这一带，才取消阻尼并把右栏收成全屏。 */
 private val FullscreenFingerEdge = 32.dp
 
 private val SplitSpring = spring<Float>(
@@ -76,86 +67,24 @@ private val SplitSpring = spring<Float>(
     stiffness = Spring.StiffnessMediumLow,
 )
 
-/**
- * 窗口放得下大约 640dp 时并排。
- * 列表默认占 40%。拖动时列表停在 35% 到 60%。
- * 再往外拖，两边内容宽度不动，分界线盖住旁边的内容，松手弹回。
- * 右侧开着邮件、手指向左滑到屏幕左缘时，阻尼取消，分界线收到最左边，正文全屏。
- */
-class MailSplitStrategy(
-    private val isWide: Boolean,
-    private val preferredFraction: MutableFloatState,
-) : SceneStrategy<NavKey> {
-    override fun SceneStrategyScope<NavKey>.calculateScene(entries: List<NavEntry<NavKey>>): Scene<NavKey>? {
-        if (!isWide) return null
-        val listEntry = entries.findLast { it.metadata.contains(ListKey) } ?: return null
-        val top = entries.last()
-        val topIsList = top.metadata.contains(ListKey)
-        val topIsDetail = top.metadata.contains(DetailKey)
-        if (!topIsList && !topIsDetail) return null
-        return MailSplitScene(
-            key = listEntry.contentKey,
-            previousEntries = entries.dropLast(1),
-            listEntry = listEntry,
-            detailEntry = top.takeIf { topIsDetail },
-            preferredFraction = preferredFraction,
-        )
-    }
-
-    companion object {
-        private object ListKey : NavMetadataKey<Boolean>
-        private object DetailKey : NavMetadataKey<Boolean>
-
-        fun listPane() = metadata { put(ListKey, true) }
-        fun detailPane() = metadata { put(DetailKey, true) }
-    }
-}
-
-data class MailSplitScene(
-    override val key: Any,
-    override val previousEntries: List<NavEntry<NavKey>>,
-    private val listEntry: NavEntry<NavKey>,
-    private val detailEntry: NavEntry<NavKey>?,
-    private val preferredFraction: MutableFloatState,
-) : Scene<NavKey> {
-    override val entries: List<NavEntry<NavKey>> = listOfNotNull(listEntry, detailEntry)
-
-    override val content: @Composable () -> Unit = {
-        MailSplitLayout(
-            preferredFraction = preferredFraction,
-            detailOpen = detailEntry != null,
-        ) {
-            list { listEntry.Content() }
-            detail {
-                CompositionLocalProvider(LocalDetailHandlesBack provides false) {
-                    if (detailEntry == null) EmptyDetail() else detailEntry.Content()
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun rememberMailSplitStrategy(widthIsWide: Boolean, preferredFraction: MutableFloatState): MailSplitStrategy {
-    return remember(widthIsWide, preferredFraction) {
-        MailSplitStrategy(widthIsWide, preferredFraction)
-    }
-}
-
 fun isWideWindow(width: androidx.compose.ui.unit.Dp): Boolean = width >= WideThreshold
 
+/**
+ * 宽屏左右分栏。不认具体页面：左边放什么、右边放什么由调用方决定。
+ * 比例全局一份。右侧有内容时，手指向左滑到屏幕左缘会把右栏收成全屏。
+ */
 @Composable
-private fun MailSplitLayout(
+fun SplitLayout(
     preferredFraction: MutableFloatState,
-    detailOpen: Boolean,
+    rightOpen: Boolean,
     content: SplitSlots.() -> Unit,
 ) {
     val slots = SplitSlots().apply(content)
     val state = remember(preferredFraction) { SplitDragState(preferredFraction) }
     val scope = rememberCoroutineScope()
-    SideEffect { state.detailOpen = detailOpen }
-    LaunchedEffect(detailOpen) {
-        if (!detailOpen && (state.locked || state.fullscreen.floatValue > 0f)) {
+    SideEffect { state.detailOpen = rightOpen }
+    LaunchedEffect(rightOpen) {
+        if (!rightOpen && (state.locked || state.fullscreen.floatValue > 0f)) {
             state.stop()
             state.locked = false
             state.fullscreen.floatValue = 0f
@@ -260,7 +189,7 @@ private fun MailSplitLayout(
                                     val previousFinger = fingerX
                                     fingerX += delta
                                     dragX = (dragX + delta).coerceIn(-rubberRange, total + rubberRange)
-                                    // 从右缘跨进左缘这一带，并且右侧开着邮件，才收成全屏。
+                                    // 从右侧跨进屏幕左缘，并且右栏开着内容，才收成全屏。
                                     val crossedIntoEdge = state.detailOpen &&
                                         dragX < minPx &&
                                         fingerX <= edgePx &&
@@ -406,7 +335,7 @@ private class SplitDragState(
     }
 }
 
-private class SplitSlots {
+class SplitSlots {
     var list: @Composable () -> Unit = {}
     var detail: @Composable () -> Unit = {}
 

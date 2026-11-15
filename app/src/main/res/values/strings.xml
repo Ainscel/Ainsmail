@@ -66,6 +66,11 @@
     <string name="compose_pending">发信尚未接入</string>
     <string name="compose_reply">回复：%1$s</string>
     <string name="settings_back">返回</string>
+    <string name="settings_notifications">通知</string>
+    <string name="settings_privacy">隐私</string>
+    <string name="settings_secrets">密钥</string>
+    <string name="settings_empty">这里还没有内容</string>
+    <string name="settings_pick">选择一个栏目</string>
     <string name="settings_deepseek_section">DeepSeek</string>
     <string name="settings_deepseek_key">密钥</string>
     <string name="settings_deepseek_model">模型名</string>

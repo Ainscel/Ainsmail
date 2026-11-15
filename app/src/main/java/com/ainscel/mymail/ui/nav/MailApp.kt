@@ -38,12 +38,12 @@ import com.ainscel.mymail.ui.detail.ComposePlaceholder
 import com.ainscel.mymail.ui.detail.MailDetailPane
 import com.ainscel.mymail.ui.list.MailListPane
 import com.ainscel.mymail.ui.mailbox.MailboxViewModel
-import com.ainscel.mymail.ui.settings.SettingsScreen
+import com.ainscel.mymail.ui.settings.SettingsHomePane
+import com.ainscel.mymail.ui.settings.SettingsSection
+import com.ainscel.mymail.ui.settings.SettingsSectionPane
 import com.ainscel.mymail.ui.shell.AccountOverlay
-import com.ainscel.mymail.ui.shell.MailSplitStrategy
 import com.ainscel.mymail.ui.shell.OverlayController
 import com.ainscel.mymail.ui.shell.isWideWindow
-import com.ainscel.mymail.ui.shell.rememberMailSplitStrategy
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -53,7 +53,10 @@ data object MailListRoute : NavKey
 data class MailDetailRoute(val mailId: String) : NavKey
 
 @Serializable
-data object SettingsRoute : NavKey
+data object SettingsHomeRoute : NavKey
+
+@Serializable
+data class SettingsSectionRoute(val section: SettingsSection) : NavKey
 
 @Serializable
 data class ComposeRoute(val mailId: String? = null) : NavKey
@@ -107,7 +110,7 @@ fun MailApp(
     ) { innerPadding ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(innerPadding)) {
             val wide = isWideWindow(maxWidth)
-            val strategy = rememberMailSplitStrategy(wide, splitFraction)
+            val strategy = rememberTwoPaneStrategy(wide, splitFraction)
             val panelWidth = minOf(300.dp, maxWidth * 0.88f)
             val panelWidthPx = with(LocalDensity.current) { panelWidth.toPx() }
             Box(Modifier.fillMaxSize()) {
@@ -123,7 +126,7 @@ fun MailApp(
                     },
                     sceneStrategies = listOf(strategy),
                     entryProvider = entryProvider {
-                        entry<MailListRoute>(metadata = MailSplitStrategy.listPane()) {
+                        entry<MailListRoute>(metadata = TwoPaneStrategy.primaryPane()) {
                             MailListPane(
                                 mailbox = mailbox,
                                 openMailId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId,
@@ -133,7 +136,7 @@ fun MailApp(
                                 onCompose = { backStack.add(ComposeRoute()) },
                             )
                         }
-                        entry<MailDetailRoute>(metadata = MailSplitStrategy.detailPane()) { route ->
+                        entry<MailDetailRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->
                             val mail = mailbox.mails.find { it.id == route.mailId }
                             MailDetailPane(
                                 mail = mail,
@@ -147,8 +150,20 @@ fun MailApp(
                                 },
                             )
                         }
-                        entry<SettingsRoute> {
-                            SettingsScreen(
+                        entry<SettingsHomeRoute>(metadata = TwoPaneStrategy.primaryPane()) {
+                            SettingsHomePane(
+                                selected = backStack.filterIsInstance<SettingsSectionRoute>().lastOrNull()?.section,
+                                onBack = {
+                                    backStack.removeAll {
+                                        it is SettingsHomeRoute || it is SettingsSectionRoute
+                                    }
+                                },
+                                onOpen = { section -> openSettingsSection(backStack, section) },
+                            )
+                        }
+                        entry<SettingsSectionRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->
+                            SettingsSectionPane(
+                                section = route.section,
                                 store = secretStore,
                                 onBack = { backStack.removeLastOrNull() },
                             )
@@ -183,7 +198,7 @@ fun MailApp(
                     onAdd = { addDialog = true },
                     onSettings = {
                         overlay.close(scope)
-                        if (backStack.lastOrNull() !is SettingsRoute) backStack.add(SettingsRoute)
+                        if (backStack.none { it is SettingsHomeRoute }) backStack.add(SettingsHomeRoute)
                     },
                     onClose = { overlay.close(scope) },
                     onDrag = { overlay.dragBy(it, panelWidthPx) },
@@ -224,6 +239,16 @@ fun MailApp(
             },
         )
     }
+}
+
+private fun openSettingsSection(
+    backStack: androidx.navigation3.runtime.NavBackStack<NavKey>,
+    section: SettingsSection,
+) {
+    val current = backStack.lastOrNull()
+    if (current is SettingsSectionRoute && current.section == section) return
+    backStack.removeAll { it is SettingsSectionRoute }
+    backStack.add(SettingsSectionRoute(section))
 }
 
 private fun openMail(backStack: androidx.navigation3.runtime.NavBackStack<NavKey>, id: String) {

@@ -1,6 +1,5 @@
 package com.ainscel.mymail.ui.settings
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,7 +17,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -35,13 +34,52 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.ainscel.mymail.R
 import com.ainscel.mymail.security.SecretStore
+import com.ainscel.mymail.ui.detail.SplitFullscreenButton
+import com.ainscel.mymail.ui.shell.LocalDetailHandlesBack
+import com.ainscel.mymail.ui.shell.MailCapsuleHeight
+import com.ainscel.mymail.ui.shell.MailChromeInset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** 某个设置栏目。窄屏整页，宽屏在分界线右侧。 */
 @Composable
-fun SettingsScreen(
+fun SettingsSectionPane(
+    section: SettingsSection,
     store: SecretStore,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val title = stringResource(section.label)
+    when (section) {
+        SettingsSection.Secrets -> SecretsSettings(store = store, title = title, onBack = onBack, modifier = modifier)
+        SettingsSection.Notifications,
+        SettingsSection.Privacy,
+        -> EmptySettingsSection(title = title, onBack = onBack, modifier = modifier)
+    }
+}
+
+@Composable
+private fun EmptySettingsSection(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    SettingsSectionFrame(title = title, onBack = onBack, modifier = modifier) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = stringResource(R.string.settings_empty),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SecretsSettings(
+    store: SecretStore,
+    title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -66,126 +104,157 @@ fun SettingsScreen(
         loaded = true
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onBack) {
-                    Text(stringResource(R.string.settings_back))
-                }
-            }
-            Text(
-                text = stringResource(R.string.open_settings),
-                style = MaterialTheme.typography.headlineSmall,
-            )
-
-            SectionTitle(stringResource(R.string.settings_deepseek_section))
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { apiKey = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.settings_deepseek_key)) },
-                singleLine = true,
-                visualTransformation = if (revealKey) {
-                    VisualTransformation.None
-                } else {
-                    PasswordVisualTransformation()
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                trailingIcon = {
-                    TextButton(onClick = { revealKey = !revealKey }) {
-                        Text(
-                            stringResource(
-                                if (revealKey) R.string.settings_hide else R.string.settings_show,
-                            ),
-                        )
-                    }
-                },
-            )
-            OutlinedTextField(
-                value = model,
-                onValueChange = { model = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.settings_deepseek_model)) },
-                supportingText = { Text(stringResource(R.string.settings_deepseek_model_hint)) },
-                singleLine = true,
-            )
-
-            SectionTitle(stringResource(R.string.settings_google_section))
-            OutlinedTextField(
-                value = clientId,
-                onValueChange = { clientId = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.settings_client_id)) },
-                supportingText = { Text(stringResource(R.string.settings_client_id_hint)) },
-                singleLine = true,
-            )
-            OutlinedTextField(
-                value = clientSecret,
-                onValueChange = { clientSecret = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.settings_client_secret)) },
-                supportingText = { Text(stringResource(R.string.settings_client_secret_hint)) },
-                singleLine = true,
-                visualTransformation = if (revealClientSecret) {
-                    VisualTransformation.None
-                } else {
-                    PasswordVisualTransformation()
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                trailingIcon = {
-                    TextButton(onClick = { revealClientSecret = !revealClientSecret }) {
-                        Text(
-                            stringResource(
-                                if (revealClientSecret) R.string.settings_hide else R.string.settings_show,
-                            ),
-                        )
-                    }
-                },
-            )
-            Text(
-                text = stringResource(R.string.settings_google_help),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Button(
-                onClick = {
-                    scope.launch {
-                        val saved = withContext(Dispatchers.IO) {
-                            store.write(
-                                SecretStore.Secrets(
-                                    deepSeekApiKey = apiKey,
-                                    deepSeekModel = model,
-                                    googleClientId = clientId,
-                                    googleClientSecret = clientSecret,
+    SettingsSectionFrame(title = title, onBack = onBack, modifier = modifier) {
+        Box(Modifier.fillMaxSize()) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+            ) {
+                SectionTitle(stringResource(R.string.settings_deepseek_section))
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = { apiKey = it },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    label = { Text(stringResource(R.string.settings_deepseek_key)) },
+                    singleLine = true,
+                    visualTransformation = if (revealKey) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        TextButton(onClick = { revealKey = !revealKey }) {
+                            Text(
+                                stringResource(
+                                    if (revealKey) R.string.settings_hide else R.string.settings_show,
                                 ),
                             )
-                            store.read()
                         }
-                        apiKey = saved.deepSeekApiKey
-                        model = saved.deepSeekModel
-                        clientId = saved.googleClientId
-                        clientSecret = saved.googleClientSecret
-                        snackbarHostState.showSnackbar(savedMessage)
-                    }
-                },
-                enabled = loaded,
-                modifier = Modifier.fillMaxWidth(),
+                    },
+                )
+                OutlinedTextField(
+                    value = model,
+                    onValueChange = { model = it },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    label = { Text(stringResource(R.string.settings_deepseek_model)) },
+                    supportingText = { Text(stringResource(R.string.settings_deepseek_model_hint)) },
+                    singleLine = true,
+                )
+                SectionTitle(stringResource(R.string.settings_google_section))
+                OutlinedTextField(
+                    value = clientId,
+                    onValueChange = { clientId = it },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    label = { Text(stringResource(R.string.settings_client_id)) },
+                    supportingText = { Text(stringResource(R.string.settings_client_id_hint)) },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = clientSecret,
+                    onValueChange = { clientSecret = it },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    label = { Text(stringResource(R.string.settings_client_secret)) },
+                    supportingText = { Text(stringResource(R.string.settings_client_secret_hint)) },
+                    singleLine = true,
+                    visualTransformation = if (revealClientSecret) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        TextButton(onClick = { revealClientSecret = !revealClientSecret }) {
+                            Text(
+                                stringResource(
+                                    if (revealClientSecret) R.string.settings_hide else R.string.settings_show,
+                                ),
+                            )
+                        }
+                    },
+                )
+                Text(
+                    text = stringResource(R.string.settings_google_help),
+                    modifier = Modifier.padding(top = 12.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val saved = withContext(Dispatchers.IO) {
+                                store.write(
+                                    SecretStore.Secrets(
+                                        deepSeekApiKey = apiKey,
+                                        deepSeekModel = model,
+                                        googleClientId = clientId,
+                                        googleClientSecret = clientSecret,
+                                    ),
+                                )
+                                store.read()
+                            }
+                            apiKey = saved.deepSeekApiKey
+                            model = saved.deepSeekModel
+                            clientId = saved.googleClientId
+                            clientSecret = saved.googleClientSecret
+                            snackbarHostState.showSnackbar(savedMessage)
+                        }
+                    },
+                    enabled = loaded,
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                ) {
+                    Text(stringResource(R.string.settings_save))
+                }
+            }
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionFrame(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val handlesBack = LocalDetailHandlesBack.current
+    Box(modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(end = if (handlesBack) 0.dp else MailCapsuleHeight + MailChromeInset),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(stringResource(R.string.settings_save))
+                if (handlesBack) {
+                    TextButton(onClick = onBack) {
+                        Text(stringResource(R.string.settings_back))
+                    }
+                }
+                Text(
+                    text = title,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+            }
+            Box(Modifier.weight(1f)) {
+                content()
             }
         }
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        if (!handlesBack) {
+            SplitFullscreenButton(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = MailChromeInset, end = MailChromeInset),
+            )
+        }
     }
 }
 
