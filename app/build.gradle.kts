@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.ainscel.mymail"
+    namespace = "com.ainscel.ainsmail"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.ainscel.mymail"
+        applicationId = "com.ainscel.ainsmail"
         minSdk = 26
         targetSdk = 37
         versionCode = 1
