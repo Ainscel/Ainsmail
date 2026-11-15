@@ -3,10 +3,6 @@
 ---
 更新日期：2026-11-15
 当前分支：`test`（重构后的页面骨架）
-需求：`docs/prd/业务需求文档.md`
-决策：`docs/issues/框架问题.md`
-审阅：`docs/issues/框架审阅.md`
-
 
 ## 现在到哪一步
 
@@ -49,8 +45,6 @@
 - 领域枚举和模型：`model/`
 - 样例数据：`data/SampleMailbox.kt`
 - 已登录账号和凭证：`security/AccountBook.kt`、`security/SecretStore.kt`、`security/ProviderCredentials.kt`
-
-当前进度的结构结论以 `docs/issues/框架审阅.md` 为准。账号模块可维护性结论以 `docs/issues/账号审阅.md` 为准。已经定下来不做的事以 `docs/issues/框架问题.md` 为准。
 
 ---
 下一次更新在后面接续日志。
@@ -121,7 +115,7 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 
 ## 2026-11-16 03:50
 
-对 Task 1 账号模块做可维护性 / 可扩展性审阅，结论写入 `docs/issues/账号审阅.md`。
+对 Task 1 账号模块做可维护性 / 可扩展性审阅，结论写入 `docs/issues/审阅记录.md`。
 
 总评：不是屎山；凭证边界与 `AccountBook` SSOT 可保留。要在收信前收口的雏形包括：同步层凭证出口、Gmail 令牌过期判定、设置反向依赖 `ui.account`、登录对话框状态堆在 `MailApp`、双 `SecretStore`、头像选择器重复、`AvatarScroller` 体积。
 
