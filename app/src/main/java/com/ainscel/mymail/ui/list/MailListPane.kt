@@ -32,14 +32,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -251,60 +245,48 @@ private fun ListTopBar(
     onSearch: () -> Unit,
     onCompose: () -> Unit,
 ) {
-    val fadeColor = MaterialTheme.colorScheme.surface
-    var titleClipped by remember { mutableStateOf(false) }
-    Row(
-        Modifier
+    // 标题与右侧三按钮用固定约束测量，拖分界线时只改按钮 X，不再整行重测。
+    ZeroReflowTopBar(
+        modifier = Modifier
             .fillMaxWidth()
             .padding(start = 8.dp, end = 4.dp, top = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = title,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 8.dp, end = 4.dp)
-                .clickable(onClick = onTitleClick)
-                .drawWithContent {
-                    drawContent()
-                    if (!titleClipped) return@drawWithContent
-                    val fade = 28.dp.toPx().coerceAtMost(size.width)
-                    drawRect(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(Color.Transparent, fadeColor),
-                            startX = size.width - fade,
-                            endX = size.width,
-                        ),
-                        topLeft = Offset(size.width - fade, 0f),
-                        size = Size(fade, size.height),
-                    )
-                },
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Clip,
-            onTextLayout = { titleClipped = it.hasVisualOverflow },
-            style = MaterialTheme.typography.headlineSmall,
-        )
-        TextButton(onClick = onFilter) { BarAction(stringResource(R.string.list_filter)) }
-        TextButton(onClick = onMarkRead) { BarAction(stringResource(R.string.list_mark_read)) }
-        Box {
-            TextButton(onClick = onMenuOpen) { BarAction(stringResource(R.string.list_more)) }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = onMenuDismiss) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.list_multi_select)) },
-                    onClick = onMultiSelect,
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.list_search)) },
-                    onClick = onSearch,
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.list_compose)) },
-                    onClick = onCompose,
-                )
+        leftTitle = {
+            Text(
+                text = title,
+                modifier = Modifier
+                    .padding(start = 8.dp, end = 4.dp)
+                    .clickable(onClick = onTitleClick)
+                    .zeroReflowFadeText(fadeWidth = 28.dp),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
+                style = MaterialTheme.typography.headlineSmall,
+            )
+        },
+        rightActions = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onFilter) { BarAction(stringResource(R.string.list_filter)) }
+                TextButton(onClick = onMarkRead) { BarAction(stringResource(R.string.list_mark_read)) }
+                Box {
+                    TextButton(onClick = onMenuOpen) { BarAction(stringResource(R.string.list_more)) }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = onMenuDismiss) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.list_multi_select)) },
+                            onClick = onMultiSelect,
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.list_search)) },
+                            onClick = onSearch,
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.list_compose)) },
+                            onClick = onCompose,
+                        )
+                    }
+                }
             }
-        }
-    }
+        },
+    )
 }
 
 @Composable

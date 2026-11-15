@@ -8,9 +8,7 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,23 +26,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ainscel.mymail.R
@@ -54,6 +44,15 @@ import com.ainscel.mymail.model.TagPool
 import com.ainscel.mymail.model.avatarColor
 import com.ainscel.mymail.model.avatarLabel
 import com.ainscel.mymail.model.formatMailTime
+
+/** 标题比预览更早收束的右间距。 */
+private val SubjectFadeInset = 40.dp
+
+/** 发件人与右侧「标签+时间」之间的间隙。 */
+private val MetaGap = 8.dp
+
+/** 正文三行之间的行距。 */
+private val LineGap = 2.dp
 
 @Composable
 fun MailRow(
@@ -73,61 +72,71 @@ fun MailRow(
         MaterialTheme.colorScheme.surface
     }
     val nameWeight = if (mail.unread) FontWeight.SemiBold else FontWeight.Normal
-    Row(
+    // 外框宽度严格等于当前分界线宽度，以后横滑快捷操作从边缘立刻露出。
+    Box(
         modifier
             .fillMaxWidth()
+            .clipToBounds()
             .background(background)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Top,
     ) {
-        AnimatedVisibility(
-            visible = multiSelect,
-            enter = fadeIn() + expandHorizontally(),
-            exit = fadeOut() + shrinkHorizontally(),
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
         ) {
-            Checkbox(
-                checked = checked,
-                onCheckedChange = onChecked,
-                modifier = Modifier.padding(end = 4.dp),
+            AnimatedVisibility(
+                visible = multiSelect,
+                enter = fadeIn() + expandHorizontally(),
+                exit = fadeOut() + shrinkHorizontally(),
+            ) {
+                Checkbox(
+                    checked = checked,
+                    onCheckedChange = onChecked,
+                    modifier = Modifier.padding(end = 4.dp),
+                )
+            }
+            SenderAvatar(name = mail.fromName, accountName = accountName)
+            MailRowTextBlock(
+                mail = mail,
+                nameWeight = nameWeight,
+                showClassifying = showClassifying,
+                modifier = Modifier
+                    .padding(start = 10.dp)
+                    .weight(1f),
             )
         }
-        SenderAvatar(name = mail.fromName, accountName = accountName)
-        Column(
-            Modifier
-                .padding(start = 10.dp)
-                .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    Modifier
-                        .padding(end = 6.dp)
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (mail.unread) MaterialTheme.colorScheme.primary else Color.Transparent,
-                        ),
-                )
-                // 姓名过长时右端淡出。标签和时间在这个槽位外面，保持完整。
-                Text(
-                    text = mail.fromName,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fixedTextNoReflow(),
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Clip,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = nameWeight,
-                )
+    }
+}
+
+/**
+ * 三行正文：子项用与 actualWidth 无关的固定约束测量；
+ * 仅在摆放阶段把标签/时间贴到当前右缘。
+ */
+@Composable
+private fun MailRowTextBlock(
+    mail: Mail,
+    nameWeight: FontWeight,
+    showClassifying: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Layout(
+        content = {
+            // [0] 发件人
+            Text(
+                text = mail.fromName,
+                modifier = Modifier.zeroReflowFadeText(fadeWidth = 24.dp),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = nameWeight,
+            )
+            // [1] 标签 + 时间（或「分类中」）
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 if (showClassifying && mail.tags.isEmpty()) {
                     Text(
                         text = stringResource(R.string.list_classifying),
-                        modifier = Modifier.padding(start = 8.dp),
                         maxLines = 1,
                         softWrap = false,
                         style = MaterialTheme.typography.labelMedium,
@@ -138,7 +147,7 @@ fun MailRow(
                     TagChip(tag)
                 }
                 if (mail.tags.isNotEmpty() || (showClassifying && mail.tags.isEmpty())) {
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(MetaGap))
                 }
                 Text(
                     text = formatMailTime(mail.timeMillis),
@@ -148,29 +157,83 @@ fun MailRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            // 标题比预览更早收束。淡出位置用绘制裁切，不靠把文本测窄。
+            // [2] 标题：比预览更早淡出
             Text(
                 text = mail.subject,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fixedTextNoReflow(rightInset = 40.dp),
+                modifier = Modifier.zeroReflowFadeText(
+                    rightInset = SubjectFadeInset,
+                    fadeWidth = MailTextFadeWidth,
+                ),
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Clip,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = nameWeight,
             )
+            // [3] 预览
             Text(
                 text = mail.preview,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fixedTextNoReflow(),
+                modifier = Modifier.zeroReflowFadeText(fadeWidth = 28.dp),
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Clip,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // [4] 未读圆点（与发件人同一行靠左）
+            Box(
+                Modifier
+                    .padding(end = 6.dp)
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (mail.unread) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    ),
+            )
+        },
+        modifier = modifier.clipToBounds(),
+    ) { measurables, constraints ->
+        val actualWidth = constraints.maxWidth
+        val fixedLoose = Constraints(minWidth = 0, maxWidth = TextMeasureWidth.roundToPx())
+        val gap = MetaGap.roundToPx()
+        val lineGap = LineGap.roundToPx()
+
+        // 右侧元数据与未读点用固定约束测量，拖动时命中缓存。
+        val metaPlaceable = measurables[1].measure(fixedLoose)
+        val dotPlaceable = measurables[4].measure(fixedLoose)
+
+        // 发件人可见槽 = 当前行宽 − 元数据 − 间隙 − 圆点；槽宽会变，但内部 Text 仍按常量测。
+        val senderSlot = (actualWidth - metaPlaceable.width - gap - dotPlaceable.width)
+            .coerceAtLeast(0)
+        val senderPlaceable = measurables[0].measure(
+            Constraints(minWidth = 0, maxWidth = senderSlot.coerceAtLeast(0)),
+        )
+        // 标题/预览的布局宽度跟 actualWidth 走，内部 Paragraph 仍锁在常量宽度上。
+        val subjectPlaceable = measurables[2].measure(
+            Constraints(minWidth = 0, maxWidth = actualWidth.coerceAtLeast(0)),
+        )
+        val previewPlaceable = measurables[3].measure(
+            Constraints(minWidth = 0, maxWidth = actualWidth.coerceAtLeast(0)),
+        )
+
+        val line1Height = maxOf(senderPlaceable.height, metaPlaceable.height, dotPlaceable.height)
+        val line2Y = line1Height + lineGap
+        val line3Y = line2Y + subjectPlaceable.height + lineGap
+        val height = line3Y + previewPlaceable.height
+
+        layout(actualWidth, height) {
+            val dotY = (line1Height - dotPlaceable.height) / 2
+            dotPlaceable.placeRelative(0, dotY)
+            senderPlaceable.placeRelative(
+                x = dotPlaceable.width,
+                y = (line1Height - senderPlaceable.height) / 2,
+            )
+            metaPlaceable.placeRelative(
+                x = (actualWidth - metaPlaceable.width).coerceAtLeast(0),
+                y = (line1Height - metaPlaceable.height) / 2,
+            )
+            subjectPlaceable.placeRelative(0, line2Y)
+            previewPlaceable.placeRelative(0, line3Y)
         }
     }
 }
@@ -242,55 +305,3 @@ private fun TagChip(tag: MailTag) {
         maxLines = 1,
     )
 }
-
-/**
- * 文字按固定宽度排版，列表变窄时不再重测。
- * 看得见的宽度仍跟父布局走，多出来的部分裁掉，右端用透明度淡出，不盖底色。
- *
- * 测量宽度必须是常量，而且要比列表栏更宽，拖动分界线时约束才不会变。
- */
-private val TextMeasureWidth = 4000.dp
-private val TextFadeWidth = 36.dp
-
-private fun Modifier.fixedTextNoReflow(
-    rightInset: Dp = 0.dp,
-    fadeWidth: Dp = TextFadeWidth,
-): Modifier = this
-    .clipToBounds()
-    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-    .drawWithContent {
-        val visibleEnd = (size.width - rightInset.toPx()).coerceIn(0f, size.width)
-        val fade = fadeWidth.toPx().coerceAtMost(visibleEnd)
-        val fadeStart = visibleEnd - fade
-        drawContext.canvas.save()
-        drawContext.canvas.clipRect(0f, 0f, visibleEnd, size.height)
-        drawContent()
-        drawContext.canvas.restore()
-        if (fade <= 0f) return@drawWithContent
-        drawRect(
-            brush = Brush.horizontalGradient(
-                colors = listOf(Color.Black, Color.Transparent),
-                startX = fadeStart,
-                endX = visibleEnd,
-            ),
-            topLeft = Offset(fadeStart, 0f),
-            size = Size(fade, size.height),
-            blendMode = BlendMode.DstIn,
-        )
-    }
-    .layout { measurable, constraints ->
-        val fixedWidth = TextMeasureWidth.roundToPx()
-        val placeable = measurable.measure(
-            constraints.copy(
-                minWidth = 0,
-                maxWidth = fixedWidth,
-            ),
-        )
-        val width = when (val incoming = constraints.maxWidth) {
-            Constraints.Infinity -> placeable.width
-            else -> incoming.coerceAtLeast(0)
-        }
-        layout(width, placeable.height) {
-            placeable.placeRelative(0, 0)
-        }
-    }

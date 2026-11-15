@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -108,21 +109,29 @@ fun SplitLayout(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val total = constraints.maxWidth.toFloat().coerceAtLeast(1f)
-        val listWidth = state.listWidthPx(total)
-        val dividerX = state.dividerPx(total)
+        // 分界比例只在 layout / offset 里读，避免拖动时整棵子树每帧重组。
         val handlePx = with(density) { HandleWidth.toPx() }
         val edgeHandlePx = with(density) { EdgeHandleWidth.toPx() }
         val edgePx = with(density) { FullscreenFingerEdge.toPx() }
         val rubberRange = with(density) { 180.dp.toPx() }
-        val handle = placeHandle(dividerX, handlePx, edgeHandlePx)
         CompositionLocalProvider(LocalDetailFullscreen provides controls) {
             Box(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxSize()) {
                     Box(
                         Modifier
-                            .width(with(density) { listWidth.toDp() })
                             .fillMaxHeight()
-                            .clipToBounds(),
+                            .clipToBounds()
+                            .layout { measurable, rowConstraints ->
+                                val width = state.listWidthPx(total)
+                                    .roundToInt()
+                                    .coerceIn(0, rowConstraints.maxWidth)
+                                val placeable = measurable.measure(
+                                    rowConstraints.copy(minWidth = width, maxWidth = width),
+                                )
+                                layout(width, placeable.height) {
+                                    placeable.placeRelative(0, 0)
+                                }
+                            },
                     ) {
                         slots.list()
                     }
@@ -138,8 +147,18 @@ fun SplitLayout(
                 Box(
                     Modifier
                         .zIndex(1f)
-                        .offset { IntOffset(handle.left.roundToInt(), 0) }
-                        .width(with(density) { handle.width.toDp() })
+                        .layout { measurable, boxConstraints ->
+                            val dividerX = state.dividerPx(total)
+                            val handle = placeHandle(dividerX, handlePx, edgeHandlePx)
+                            val width = handle.width.roundToInt()
+                                .coerceIn(0, boxConstraints.maxWidth)
+                            val placeable = measurable.measure(
+                                boxConstraints.copy(minWidth = width, maxWidth = width),
+                            )
+                            layout(width, placeable.height) {
+                                placeable.placeRelative(handle.left.roundToInt(), 0)
+                            }
+                        }
                         .fillMaxHeight()
                         .pointerInput(total, rubberRange, edgePx, handlePx, edgeHandlePx) {
                             var dragX = 0f
@@ -236,7 +255,11 @@ fun SplitLayout(
                 ) {
                     Box(
                         Modifier
-                            .offset { IntOffset((dividerX - handle.left).roundToInt(), 0) }
+                            .offset {
+                                val dividerX = state.dividerPx(total)
+                                val handle = placeHandle(dividerX, handlePx, edgeHandlePx)
+                                IntOffset((dividerX - handle.left).roundToInt(), 0)
+                            }
                             .width(1.dp)
                             .fillMaxHeight()
                             .background(MaterialTheme.colorScheme.outlineVariant),
