@@ -25,8 +25,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
-import com.ainscel.ainsmail.model.Mail
-import com.ainscel.ainsmail.model.formatMailTime
+import com.ainscel.ainsmail.ui.mailbox.MailDetailUi
 import com.ainscel.ainsmail.ui.shell.LocalDetailFullscreen
 import com.ainscel.ainsmail.ui.shell.LocalDetailHandlesBack
 import com.ainscel.ainsmail.ui.shell.MailCapsuleHeight
@@ -38,8 +37,7 @@ private val DetailActionGap = 8.dp
 
 @Composable
 fun MailDetailPane(
-    mail: Mail?,
-    accountName: String,
+    detail: MailDetailUi?,
     onClose: () -> Unit,
     onOriginalLayout: () -> Unit,
     onEdit: () -> Unit,
@@ -58,7 +56,7 @@ fun MailDetailPane(
                 onFinish = { onClose() },
             ),
     ) {
-        if (mail == null) {
+        if (detail == null) {
             Box(
                 Modifier
                     .holdWidthUntilSettled()
@@ -80,20 +78,20 @@ fun MailDetailPane(
                 .padding(horizontal = 20.dp, vertical = 16.dp),
         ) {
             Column(Modifier.padding(end = if (fullscreen != null) MailCapsuleHeight else 0.dp)) {
-                Text(text = mail.subject, style = MaterialTheme.typography.headlineSmall)
+                Text(text = detail.subject, style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = mail.fromName,
+                    text = detail.fromName,
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "$accountName · ${formatMailTime(mail.timeMillis)}",
+                    text = detail.metaLine,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Spacer(Modifier.height(16.dp))
-            Text(text = mail.body, style = MaterialTheme.typography.bodyLarge)
+            Text(text = detail.body, style = MaterialTheme.typography.bodyLarge)
             // 给右下角三颗圆形按钮留出空档，正文滚到底时不会被挡住。
             Spacer(
                 Modifier.height(MailCapsuleHeight * 3 + DetailActionGap * 2 + MailChromeInset + 8.dp),
@@ -136,9 +134,9 @@ fun MailDetailPane(
 fun SplitFullscreenButton(modifier: Modifier = Modifier) {
     val fullscreen = LocalDetailFullscreen.current ?: return
     RoundMailButton(
-        icon = if (fullscreen.active) MailIcons.FullscreenExit else MailIcons.Fullscreen,
+        icon = if (fullscreen.isActive()) MailIcons.FullscreenExit else MailIcons.Fullscreen,
         description = stringResource(
-            if (fullscreen.active) R.string.detail_exit_fullscreen else R.string.detail_fullscreen,
+            if (fullscreen.isActive()) R.string.detail_exit_fullscreen else R.string.detail_fullscreen,
         ),
         onClick = fullscreen.toggle,
         modifier = modifier,

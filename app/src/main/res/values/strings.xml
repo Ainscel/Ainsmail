@@ -83,6 +83,7 @@
     <string name="settings_google_help">在 Google Cloud 创建类型为「桌面应用」的客户端。同意屏幕发布为正式版，范围加上 openid、email、profile 和 https://mail.google.com/。把客户端 ID 和客户端密钥都粘贴到上面。不需要登记签名证书。登录时走本机回环地址 http://127.0.0.1，桌面应用不必为每个端口单独登记。授权页如果出现「未验证的应用」，确认后继续。ID 或密钥有一个没填时，不能添加 Gmail。</string>
     <string name="settings_save">保存</string>
     <string name="settings_saved">已保存</string>
+    <string name="settings_secrets_unreadable">密钥暂时读不出来，原来的文件还留着。</string>
     <string name="settings_show">显示</string>
     <string name="settings_hide">隐藏</string>
 </resources>

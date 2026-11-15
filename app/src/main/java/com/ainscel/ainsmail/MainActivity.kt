@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.ainscel.ainsmail.security.SecretStore
 import com.ainscel.ainsmail.ui.nav.MailApp
 import com.ainscel.ainsmail.ui.theme.AinsmailTheme
 
@@ -12,10 +11,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val secretStore = SecretStore(this)
         setContent {
             AinsmailTheme {
-                MailApp(secretStore = secretStore)
+                MailApp()
             }
         }
     }

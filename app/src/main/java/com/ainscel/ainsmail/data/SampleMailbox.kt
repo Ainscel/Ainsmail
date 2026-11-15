@@ -5,11 +5,12 @@ import com.ainscel.ainsmail.model.Folder
 import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.MailTag
 import com.ainscel.ainsmail.model.MailType
+import com.ainscel.ainsmail.model.Provider
 import com.ainscel.ainsmail.model.TagPool
 
 val SampleAccounts = listOf(
-    Account(id = "gmail", name = "Ainscel", address = "ainscel@gmail.com"),
-    Account(id = "qq", name = "工作", address = "work@qq.com"),
+    Account(id = "a1", name = "Ainscel", address = "ainscel@gmail.com", provider = Provider.Gmail),
+    Account(id = "a2", name = "工作", address = "work@qq.com", provider = Provider.Qq),
 )
 
 fun sampleMails(now: Long): List<Mail> {
@@ -17,7 +18,7 @@ fun sampleMails(now: Long): List<Mail> {
     return listOf(
         mail(
             id = "m1",
-            accountId = "gmail",
+            accountId = "a1",
             from = "林知夏",
             subject = "下午的方案你看一下，有两处口径要改",
             preview = "附件里是今早改过的一版。第三节的数字和上周会上说的不一致，你先看结论，我把对比写在第二段。",
@@ -32,7 +33,7 @@ fun sampleMails(now: Long): List<Mail> {
         ),
         mail(
             id = "m2",
-            accountId = "qq",
+            accountId = "a2",
             from = "验证码",
             subject = "你的登录验证码是 483921",
             preview = "验证码 10 分钟内有效。如果不是你本人操作，请忽略这封邮件。",
@@ -44,7 +45,7 @@ fun sampleMails(now: Long): List<Mail> {
         ),
         mail(
             id = "m3",
-            accountId = "gmail",
+            accountId = "a1",
             from = "云服务账单",
             subject = "11 月账单已生成",
             preview = "本期金额 128.40。付款日是 11 月 20 日，明细可以在控制台查看。",
@@ -56,7 +57,7 @@ fun sampleMails(now: Long): List<Mail> {
         ),
         mail(
             id = "m4",
-            accountId = "qq",
+            accountId = "a2",
             from = "国际航空公司会员中心",
             subject = "会员日机票折扣延长到这个周日，部分航线还有升舱券可以领取",
             preview = "本周会员日的折扣延长到周日 23:59。亚太航线另有升舱券，数量有限，打开邮件里的活动页可以查看剩余。",
@@ -68,7 +69,7 @@ fun sampleMails(now: Long): List<Mail> {
         ),
         mail(
             id = "m5",
-            accountId = "gmail",
+            accountId = "a1",
             from = "安全提醒",
             subject = "你的账号在新设备上登录",
             preview = "地点显示为上海。如果是你本人，可以忽略。如果不是，请马上修改密码。",
@@ -80,7 +81,7 @@ fun sampleMails(now: Long): List<Mail> {
         ),
         mail(
             id = "m6",
-            accountId = "qq",
+            accountId = "a2",
             from = "未知发件人",
             subject = "领取你的补贴",
             preview = "点击链接填写银行卡即可到账。这是一封用来占位的垃圾邮件。",
@@ -92,7 +93,7 @@ fun sampleMails(now: Long): List<Mail> {
         ),
         mail(
             id = "m7",
-            accountId = "gmail",
+            accountId = "a1",
             from = "DeepSeek",
             subject = "模型用量提醒",
             preview = "这个月的接口调用量已经到了你设置的提醒线。可以在控制台调整，也可以什么都不做。",
@@ -104,7 +105,7 @@ fun sampleMails(now: Long): List<Mail> {
         ),
         mail(
             id = "m8",
-            accountId = "qq",
+            accountId = "a2",
             from = "周会纪要",
             subject = "周一例会纪要",
             preview = "决定了两件事：骨架先用假邮件，账号接入放在列表能滑之后。",
@@ -120,7 +121,7 @@ fun sampleMails(now: Long): List<Mail> {
         ),
         mail(
             id = "m9",
-            accountId = "gmail",
+            accountId = "a1",
             from = "书店",
             subject = "你关注的书到货了",
             preview = "库存只剩三本。这封信还没分类，列表上会看到「分类中」。",
@@ -132,7 +133,7 @@ fun sampleMails(now: Long): List<Mail> {
         ),
         mail(
             id = "m10",
-            accountId = "qq",
+            accountId = "a2",
             from = "自己",
             subject = "出差要带的东西",
             preview = "充电头、备用卡、合同复印件。这封在草稿里。",
@@ -145,7 +146,7 @@ fun sampleMails(now: Long): List<Mail> {
         ),
         mail(
             id = "m11",
-            accountId = "gmail",
+            accountId = "a1",
             from = "我",
             subject = "回复：下午的方案",
             preview = "第三节我按会上的口径改好了。这封在已发送里。",
@@ -158,7 +159,7 @@ fun sampleMails(now: Long): List<Mail> {
         ),
         mail(
             id = "m12",
-            accountId = "qq",
+            accountId = "a2",
             from = "旧项目",
             subject = "去年的合同扫描件",
             preview = "这封已经被归档。它不该再出现在收件箱。",
@@ -171,7 +172,7 @@ fun sampleMails(now: Long): List<Mail> {
         ),
         mail(
             id = "m13",
-            accountId = "gmail",
+            accountId = "a1",
             from = "订阅周报",
             subject = "本周只值得看的三篇",
             preview = "这封在已删除里，用来确认板块切换后列表会换掉。",

@@ -1,20 +1,16 @@
 package com.ainscel.ainsmail.ui.nav
 
 import android.app.Activity
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -33,10 +29,10 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import com.ainscel.ainsmail.R
-import com.ainscel.ainsmail.security.SecretStore
 import com.ainscel.ainsmail.ui.detail.ComposePlaceholder
 import com.ainscel.ainsmail.ui.detail.MailDetailPane
 import com.ainscel.ainsmail.ui.list.MailListPane
+import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
 import com.ainscel.ainsmail.ui.mailbox.MailboxViewModel
 import com.ainscel.ainsmail.ui.settings.SettingsHomePane
 import com.ainscel.ainsmail.ui.settings.SettingsSection
@@ -62,16 +58,13 @@ data class SettingsSectionRoute(val section: SettingsSection) : NavKey
 data class ComposeRoute(val mailId: String? = null) : NavKey
 
 @Composable
-fun MailApp(
-    secretStore: SecretStore,
-    modifier: Modifier = Modifier,
-) {
+fun MailApp(modifier: Modifier = Modifier) {
     val mailbox = viewModel<MailboxViewModel>()
+    val state = mailbox.state
     val backStack = rememberNavBackStack(MailListRoute)
     val overlay = remember { OverlayController() }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val undoLabel = stringResource(R.string.undo)
     val originalPending = stringResource(R.string.detail_original_pending)
     val editPending = stringResource(R.string.detail_edit_pending)
     val deletedMessage = stringResource(R.string.list_deleted)
@@ -80,29 +73,29 @@ fun MailApp(
     val allAccounts = stringResource(R.string.account_all)
     var addDialog by rememberSaveable { mutableStateOf(false) }
     val splitFraction = rememberSaveable { mutableFloatStateOf(0.40f) }
-    // 上一版默认是 34%，已经存下来的比例改到现在的 40%。左栏下限是 35%。
-    if (splitFraction.floatValue == 0.34f) splitFraction.floatValue = 0.40f
-    if (splitFraction.floatValue < 0.35f) splitFraction.floatValue = 0.35f
     val context = LocalContext.current
+    // 上一版默认是 34%。已经存下来的比例抬到 40%，并夹到左栏下限 35%。
+    SideEffect {
+        val current = splitFraction.floatValue
+        val next = when {
+            current == 0.34f -> 0.40f
+            current < 0.35f -> 0.35f
+            else -> current
+        }
+        if (next != current) splitFraction.floatValue = next
+    }
 
-    LaunchedEffect(mailbox.accountId, mailbox.folder, mailbox.mails.toList()) {
+    MailboxNoticeEffect(
+        notice = state.notice,
+        hostState = snackbarHostState,
+        onUndo = { mailbox.onIntent(MailboxIntent.Undo) },
+        onConsumed = { mailbox.onIntent(MailboxIntent.ConsumeNotice(it)) },
+    )
+    LaunchedEffect(state.accountId, state.folder, state.revision) {
         val openId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId ?: return@LaunchedEffect
-        val mail = mailbox.mails.find { it.id == openId }
-        val inScope = mail != null &&
-            (mailbox.accountId == null || mail.accountId == mailbox.accountId) &&
-            mail.folder == mailbox.folder
-        if (!inScope) backStack.removeAll { it is MailDetailRoute }
+        if (!mailbox.staysOpen(openId)) backStack.removeAll { it is MailDetailRoute }
     }
-
-    LaunchedEffect(mailbox.notice?.id) {
-        val current = mailbox.notice ?: return@LaunchedEffect
-        val result = snackbarHostState.showSnackbar(
-            message = current.text,
-            actionLabel = if (current.undo != null) undoLabel else null,
-        )
-        if (result == SnackbarResult.ActionPerformed) current.undo?.invoke()
-        if (mailbox.notice?.id == current.id) mailbox.notice = null
-    }
+    OverlayBackHandler(overlay, scope)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -126,31 +119,36 @@ fun MailApp(
                     },
                     sceneStrategies = listOf(strategy),
                     entryProvider = entryProvider {
-                        entry<MailListRoute>(metadata = TwoPaneStrategy.primaryPane()) {
+                        entry<MailListRoute>(
+                            metadata = TwoPaneStrategy.primaryPane(PrimaryEmpty.Detail),
+                        ) {
                             MailListPane(
-                                mailbox = mailbox,
+                                state = state,
                                 openMailId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId,
-                                overlay = overlay,
-                                overlayWidthPx = panelWidthPx,
+                                onIntent = mailbox::onIntent,
+                                onAddTag = mailbox::addTag,
                                 onOpenMail = { id -> openMail(backStack, id) },
                                 onCompose = { backStack.add(ComposeRoute()) },
+                                onOpenOverlay = { overlay.open(scope) },
+                                onOverlayDrag = { overlay.dragBy(it, panelWidthPx) },
+                                onOverlayRelease = { overlay.release(scope) },
                             )
                         }
                         entry<MailDetailRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->
-                            val mail = mailbox.mails.find { it.id == route.mailId }
                             MailDetailPane(
-                                mail = mail,
-                                accountName = mail?.let { mailbox.account(it.accountId)?.name }.orEmpty(),
+                                detail = mailbox.detail(route.mailId),
                                 onClose = { backStack.removeAll { it is MailDetailRoute } },
-                                onOriginalLayout = { mailbox.message(originalPending) },
-                                onEdit = { mailbox.message(editPending) },
+                                onOriginalLayout = { mailbox.onIntent(MailboxIntent.ShowMessage(originalPending)) },
+                                onEdit = { mailbox.onIntent(MailboxIntent.ShowMessage(editPending)) },
                                 onDelete = {
-                                    mailbox.deleteMail(route.mailId, deletedMessage)
+                                    mailbox.onIntent(MailboxIntent.DeleteMail(route.mailId, deletedMessage))
                                     backStack.removeAll { it is MailDetailRoute }
                                 },
                             )
                         }
-                        entry<SettingsHomeRoute>(metadata = TwoPaneStrategy.primaryPane()) {
+                        entry<SettingsHomeRoute>(
+                            metadata = TwoPaneStrategy.primaryPane(PrimaryEmpty.Settings),
+                        ) {
                             SettingsHomePane(
                                 selected = backStack.filterIsInstance<SettingsSectionRoute>().lastOrNull()?.section,
                                 onBack = {
@@ -164,35 +162,31 @@ fun MailApp(
                         entry<SettingsSectionRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->
                             SettingsSectionPane(
                                 section = route.section,
-                                store = secretStore,
                                 onBack = { backStack.removeLastOrNull() },
                             )
                         }
                         entry<ComposeRoute> { route ->
-                            val subject = route.mailId?.let { id ->
-                                mailbox.mails.find { it.id == id }?.subject
-                            }
                             ComposePlaceholder(
-                                replySubject = subject,
+                                replySubject = route.mailId?.let(mailbox::subjectOf),
                                 onBack = { backStack.removeLastOrNull() },
                             )
                         }
                     },
                 )
                 AccountOverlay(
-                    progress = overlay.progress,
+                    progress = overlay::progress,
                     panelWidth = panelWidth,
                     panelWidthPx = panelWidthPx,
-                    accounts = mailbox.accounts,
-                    selectedAccountId = mailbox.accountId,
-                    currentName = mailbox.account(mailbox.accountId ?: "")?.name ?: allAccounts,
-                    folder = mailbox.folder,
+                    accounts = state.accounts,
+                    selectedAccountId = state.accountId,
+                    currentName = state.selectedAccountName ?: allAccounts,
+                    folder = state.folder,
                     onSelectAccount = {
-                        mailbox.selectAccount(it)
+                        mailbox.onIntent(MailboxIntent.SelectAccount(it))
                         overlay.close(scope)
                     },
                     onSelectFolder = {
-                        mailbox.selectFolder(it)
+                        mailbox.onIntent(MailboxIntent.SelectFolder(it))
                         overlay.close(scope)
                     },
                     onAdd = { addDialog = true },
@@ -208,34 +202,16 @@ fun MailApp(
         }
     }
 
-    BackHandler(enabled = overlay.progress > 0.02f) {
-        overlay.close(scope)
-    }
-
     if (addDialog) {
-        AlertDialog(
-            onDismissRequest = { addDialog = false },
-            confirmButton = {
-                TextButton(onClick = { addDialog = false }) {
-                    Text(stringResource(R.string.list_cancel))
-                }
+        AddAccountDialog(
+            onDismiss = { addDialog = false },
+            onLogin = {
+                addDialog = false
+                mailbox.onIntent(MailboxIntent.ShowMessage(loginPending))
             },
-            title = { Text(stringResource(R.string.account_add)) },
-            text = {
-                androidx.compose.foundation.layout.Column {
-                    TextButton(onClick = {
-                        addDialog = false
-                        mailbox.message(loginPending)
-                    }) {
-                        Text(stringResource(R.string.account_add_login))
-                    }
-                    TextButton(onClick = {
-                        addDialog = false
-                        mailbox.message(groupPending)
-                    }) {
-                        Text(stringResource(R.string.account_add_group))
-                    }
-                }
+            onGroup = {
+                addDialog = false
+                mailbox.onIntent(MailboxIntent.ShowMessage(groupPending))
             },
         )
     }

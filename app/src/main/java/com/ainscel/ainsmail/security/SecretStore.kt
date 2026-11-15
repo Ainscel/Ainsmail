@@ -3,33 +3,49 @@ package com.ainscel.ainsmail.security
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.File
+import java.security.GeneralSecurityException
 import java.security.KeyStore
+import java.util.concurrent.CancellationException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** 用系统密钥库里的密钥加密本地配置。密钥、客户端 ID 和刷新令牌都走这里，不写日志。 */
+/**
+ * 用系统密钥库加密本地配置。
+ * 现在保存全局的 DeepSeek 配置，以及用户自己填写的 Google 桌面客户端。
+ * 按账号的刷新令牌和 QQ 授权码以后放进同一份文件，不写日志。
+ */
 class SecretStore(context: Context) {
     private val file = File(context.applicationContext.filesDir, FILE_NAME)
-    private val keyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
+    private val gate = gateFor(file.absolutePath)
+    private val keyStore: KeyStore by lazy {
+        KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
+    }
 
-    fun read(): Secrets {
-        synchronized(file) {
-            if (!file.exists()) return Secrets()
+    fun read(): SecretRead {
+        synchronized(gate) {
+            if (!file.exists()) return SecretRead.Missing
             return try {
-                Secrets.fromJson(String(decrypt(file.readBytes()), Charsets.UTF_8))
-            } catch (_: Exception) {
-                file.delete()
-                Secrets()
+                SecretRead.Ok(Secrets.fromJson(String(decrypt(file.readBytes()), Charsets.UTF_8)))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (error.isCorrupt()) {
+                    file.delete()
+                    SecretRead.Missing
+                } else {
+                    SecretRead.Unreadable(error)
+                }
             }
         }
     }
 
     fun write(secrets: Secrets) {
-        synchronized(file) {
+        synchronized(gate) {
             val encoded = encrypt(secrets.normalized().toJson().toByteArray(Charsets.UTF_8))
             val temporary = File(file.parentFile, "$FILE_NAME.tmp")
             temporary.writeBytes(encoded)
@@ -69,7 +85,9 @@ class SecretStore(context: Context) {
     }
 
     private fun decrypt(payload: ByteArray): ByteArray {
+        if (payload.size < 2) throw IllegalArgumentException("empty")
         val ivLength = payload[0].toInt() and 0xff
+        if (ivLength <= 0 || payload.size < 1 + ivLength + 1) throw IllegalArgumentException("short")
         val iv = payload.copyOfRange(1, 1 + ivLength)
         val cipherText = payload.copyOfRange(1 + ivLength, payload.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
@@ -95,6 +113,7 @@ class SecretStore(context: Context) {
         )
 
         fun toJson(): String = JSONObject()
+            .put(JSON_VERSION, SCHEMA_VERSION)
             .put(JSON_API_KEY, deepSeekApiKey)
             .put(JSON_MODEL, deepSeekModel)
             .put(JSON_CLIENT_ID, googleClientId)
@@ -117,14 +136,37 @@ class SecretStore(context: Context) {
     companion object {
         const val DEFAULT_MODEL = "deepseek-flash"
 
+        private const val SCHEMA_VERSION = 1
         private const val ANDROID_KEY_STORE = "AndroidKeyStore"
         private const val KEY_ALIAS = "ainsmail.secrets"
         private const val FILE_NAME = "secrets.bin"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_BITS = 128
+        private const val JSON_VERSION = "version"
         private const val JSON_API_KEY = "deepSeekApiKey"
         private const val JSON_MODEL = "deepSeekModel"
         private const val JSON_CLIENT_ID = "googleClientId"
         private const val JSON_CLIENT_SECRET = "googleClientSecret"
+        private val gates = HashMap<String, Any>()
+
+        private fun gateFor(path: String): Any = synchronized(gates) {
+            gates.getOrPut(path) { Any() }
+        }
     }
+}
+
+sealed interface SecretRead {
+    data class Ok(val secrets: SecretStore.Secrets) : SecretRead
+    data object Missing : SecretRead
+    data class Unreadable(val cause: Exception) : SecretRead
+}
+
+/** 内容坏了才删文件。磁盘错误留下来，取消必须原样抛出。 */
+private fun Exception.isCorrupt(): Boolean = when (this) {
+    is GeneralSecurityException,
+    is JSONException,
+    is IllegalArgumentException,
+    is IndexOutOfBoundsException,
+    -> true
+    else -> false
 }

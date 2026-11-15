@@ -1,0 +1,119 @@
+package com.ainscel.ainsmail.ui.settings
+
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import com.ainscel.ainsmail.R
+
+/**
+ * 密钥可以长按粘贴。
+ * Password 键盘类型会关掉文字选区，系统的粘贴菜单不会出现。
+ * 隐藏字符仍由 PasswordVisualTransformation 负责。
+ */
+internal val SecretKeyboard = KeyboardOptions(
+    keyboardType = KeyboardType.Ascii,
+    autoCorrectEnabled = false,
+)
+
+@Composable
+internal fun DeepSeekFields(
+    state: SecretsUiState,
+    onEdit: (SecretsEdit) -> Unit,
+) {
+    SectionTitle(stringResource(R.string.settings_deepseek_section))
+    OutlinedTextField(
+        value = state.apiKey,
+        onValueChange = { onEdit(SecretsEdit.ApiKey(it)) },
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        label = { Text(stringResource(R.string.settings_deepseek_key)) },
+        singleLine = true,
+        visualTransformation = if (state.revealKey) {
+            VisualTransformation.None
+        } else {
+            PasswordVisualTransformation()
+        },
+        keyboardOptions = SecretKeyboard,
+        trailingIcon = {
+            TextButton(onClick = { onEdit(SecretsEdit.ToggleKey) }) {
+                Text(
+                    stringResource(
+                        if (state.revealKey) R.string.settings_hide else R.string.settings_show,
+                    ),
+                )
+            }
+        },
+    )
+    OutlinedTextField(
+        value = state.model,
+        onValueChange = { onEdit(SecretsEdit.Model(it)) },
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        label = { Text(stringResource(R.string.settings_deepseek_model)) },
+        supportingText = { Text(stringResource(R.string.settings_deepseek_model_hint)) },
+        singleLine = true,
+    )
+}
+
+@Composable
+internal fun GoogleFields(
+    state: SecretsUiState,
+    onEdit: (SecretsEdit) -> Unit,
+) {
+    SectionTitle(stringResource(R.string.settings_google_section))
+    OutlinedTextField(
+        value = state.clientId,
+        onValueChange = { onEdit(SecretsEdit.ClientId(it)) },
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        label = { Text(stringResource(R.string.settings_client_id)) },
+        supportingText = { Text(stringResource(R.string.settings_client_id_hint)) },
+        singleLine = true,
+    )
+    OutlinedTextField(
+        value = state.clientSecret,
+        onValueChange = { onEdit(SecretsEdit.ClientSecret(it)) },
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        label = { Text(stringResource(R.string.settings_client_secret)) },
+        supportingText = { Text(stringResource(R.string.settings_client_secret_hint)) },
+        singleLine = true,
+        visualTransformation = if (state.revealClientSecret) {
+            VisualTransformation.None
+        } else {
+            PasswordVisualTransformation()
+        },
+        keyboardOptions = SecretKeyboard,
+        trailingIcon = {
+            TextButton(onClick = { onEdit(SecretsEdit.ToggleClientSecret) }) {
+                Text(
+                    stringResource(
+                        if (state.revealClientSecret) R.string.settings_hide else R.string.settings_show,
+                    ),
+                )
+            }
+        },
+    )
+    Text(
+        text = stringResource(R.string.settings_google_help),
+        modifier = Modifier.padding(top = 12.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+internal fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+}

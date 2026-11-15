@@ -8,6 +8,7 @@ import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.NavMetadataKey
 import androidx.navigation3.runtime.contains
+import androidx.navigation3.runtime.get
 import androidx.navigation3.runtime.metadata
 import androidx.navigation3.scene.Scene
 import androidx.navigation3.scene.SceneStrategy
@@ -16,6 +17,12 @@ import com.ainscel.ainsmail.ui.detail.EmptyDetail
 import com.ainscel.ainsmail.ui.settings.SettingsPaneEmpty
 import com.ainscel.ainsmail.ui.shell.LocalDetailHandlesBack
 import com.ainscel.ainsmail.ui.shell.SplitLayout
+
+/** 左栏还没有右栏内容时，右侧画哪一种空状态。 */
+enum class PrimaryEmpty {
+    Detail,
+    Settings,
+}
 
 /**
  * 宽屏下，最近的左栏和压在它上面的右栏并排。
@@ -33,11 +40,12 @@ class TwoPaneStrategy(
         val topIsPrimary = top.metadata.contains(PrimaryKey)
         val topIsSecondary = top.metadata.contains(SecondaryKey)
         if (!topIsPrimary && !topIsSecondary) return null
+        val secondary = top.takeIf { topIsSecondary }
         return TwoPaneScene(
-            key = primary.contentKey,
+            key = primary.contentKey to secondary?.contentKey,
             previousEntries = entries.dropLast(1),
             primary = primary,
-            secondary = top.takeIf { topIsSecondary },
+            secondary = secondary,
             preferredFraction = preferredFraction,
         )
     }
@@ -45,9 +53,18 @@ class TwoPaneStrategy(
     companion object {
         private object PrimaryKey : NavMetadataKey<Boolean>
         private object SecondaryKey : NavMetadataKey<Boolean>
+        private object EmptyKey : NavMetadataKey<PrimaryEmpty>
 
-        fun primaryPane() = metadata { put(PrimaryKey, true) }
+        fun primaryPane(empty: PrimaryEmpty = PrimaryEmpty.Detail) = metadata {
+            put(PrimaryKey, true)
+            put(EmptyKey, empty)
+        }
+
         fun secondaryPane() = metadata { put(SecondaryKey, true) }
+
+        internal fun emptyOf(entry: NavEntry<NavKey>): PrimaryEmpty {
+            return entry.metadata[EmptyKey] ?: PrimaryEmpty.Detail
+        }
     }
 }
 
@@ -76,9 +93,9 @@ private data class TwoPaneScene(
             detail {
                 CompositionLocalProvider(LocalDetailHandlesBack provides false) {
                     if (secondary == null) {
-                        when (primary.contentKey) {
-                            is SettingsHomeRoute -> SettingsPaneEmpty()
-                            else -> EmptyDetail()
+                        when (TwoPaneStrategy.emptyOf(primary)) {
+                            PrimaryEmpty.Settings -> SettingsPaneEmpty()
+                            PrimaryEmpty.Detail -> EmptyDetail()
                         }
                     } else {
                         secondary.Content()
