@@ -15,13 +15,11 @@ class SecretDocumentTest {
             address = "me@qq.com",
             displayName = "me",
             authCode = "SECRET-CODE",
-            refreshToken = "SECRET-TOKEN",
         )
         val original = SecretDocument(
             deepSeekApiKey = "old-key",
             deepSeekModel = "deepseek-flash",
             googleClientId = "old-id",
-            googleClientSecret = "old-secret",
             accounts = listOf(record),
         )
         val updated = parseSecretDocument(original.encode()).replacingSecrets(
@@ -29,26 +27,21 @@ class SecretDocumentTest {
                 deepSeekApiKey = "new-key",
                 deepSeekModel = "deepseek-chat",
                 googleClientId = "new-id",
-                googleClientSecret = "new-secret",
             ),
         )
         val again = parseSecretDocument(updated.encode())
 
         assertEquals("new-key", again.deepSeekApiKey)
         assertEquals("new-id", again.googleClientId)
-        assertEquals("new-secret", again.googleClientSecret)
         assertEquals("SECRET-CODE", again.accounts.single().authCode)
-        assertEquals("SECRET-TOKEN", again.accounts.single().refreshToken)
         assertFalse(again.accounts.single().toString().contains("SECRET-CODE"))
-        assertFalse(again.accounts.single().toString().contains("SECRET-TOKEN"))
+        assertFalse(again.encode().contains("googleClientSecret"))
+        assertFalse(again.encode().contains("refreshToken"))
     }
 
     @Test
-    fun replacingAccountsKeepsClientSecret() {
-        val original = SecretDocument(
-            googleClientId = "id",
-            googleClientSecret = "SECRET-CLIENT",
-        )
+    fun replacingAccountsKeepsClientId() {
+        val original = SecretDocument(googleClientId = "id")
         val updated = parseSecretDocument(original.encode()).replacingAccounts(
             listOf(
                 AccountRecord(
@@ -56,30 +49,35 @@ class SecretDocumentTest {
                     provider = AccountRecord.PROVIDER_GMAIL,
                     address = "me@gmail.com",
                     displayName = "Me",
-                    refreshToken = "SECRET-REFRESH",
+                    accessToken = "SECRET-ACCESS",
+                    accessTokenExpiresAtEpochMs = 1_700_000_000_000L,
                 ),
             ),
         )
         val again = parseSecretDocument(updated.encode())
 
-        assertEquals("SECRET-CLIENT", again.googleClientSecret)
-        assertEquals("SECRET-REFRESH", again.accounts.single().refreshToken)
+        assertEquals("SECRET-ACCESS", again.accounts.single().accessToken)
+        assertEquals(1_700_000_000_000L, again.accounts.single().accessTokenExpiresAtEpochMs)
         assertEquals("id", again.googleClientId)
         assertNull(again.accounts.single().profile()?.avatarFile)
+        assertFalse(again.accounts.single().toString().contains("SECRET-ACCESS"))
     }
 
     @Test
-    fun versionOneFileStillReads() {
+    fun olderSchemasStillReadAndDropObsoleteFields() {
         val raw = """
-            {"version":1,"deepSeekApiKey":"k","deepSeekModel":"m","googleClientId":"id","googleClientSecret":"sec"}
+            {"version":2,"deepSeekApiKey":"k","deepSeekModel":"m","googleClientId":"id","googleClientSecret":"sec","accounts":[{"id":"g","provider":"gmail","address":"me@gmail.com","displayName":"Me","refreshToken":"OLD-REFRESH"}]}
         """.trimIndent()
         val document = parseSecretDocument(raw)
 
-        assertTrue(document.accounts.isEmpty())
         assertEquals("k", document.deepSeekApiKey)
         assertEquals("m", document.deepSeekModel)
         assertEquals("id", document.googleClientId)
-        assertEquals("sec", document.googleClientSecret)
+        assertEquals(1, document.accounts.size)
+        assertEquals("", document.accounts.single().accessToken)
         assertEquals(SECRET_SCHEMA_VERSION, parseSecretDocument(document.encode()).version)
+        assertTrue(document.encode().contains("accessToken"))
+        assertFalse(document.encode().contains("refreshToken"))
+        assertFalse(document.encode().contains("googleClientSecret"))
     }
 }
