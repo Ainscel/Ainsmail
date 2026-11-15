@@ -49,6 +49,14 @@ val LocalDetailHandlesBack = staticCompositionLocalOf { true }
  */
 val LocalDetailFullscreen = staticCompositionLocalOf<DetailFullscreenControls?> { null }
 
+/**
+ * 宽屏分界线是否还在动。右栏用它在布局阶段决定要不要沿用上一次的测量宽度。
+ * 窄屏没有分栏，这个值是 null。
+ */
+val LocalSplitResize = staticCompositionLocalOf<SplitResize?> { null }
+
+class SplitResize(val isResizing: () -> Boolean)
+
 class DetailFullscreenControls(
     val active: Boolean,
     val toggle: () -> Unit,
@@ -82,11 +90,12 @@ fun SplitLayout(
 ) {
     val slots = SplitSlots().apply(content)
     val state = remember(preferredFraction) { SplitDragState(preferredFraction) }
+    val resize = remember(state) { SplitResize { state.resizing } }
     val scope = rememberCoroutineScope()
     SideEffect { state.detailOpen = rightOpen }
     LaunchedEffect(rightOpen) {
         if (!rightOpen && (state.locked || state.fullscreen.floatValue > 0f)) {
-            state.stop()
+            state.settle()
             state.locked = false
             state.fullscreen.floatValue = 0f
             state.extra.floatValue = 0f
@@ -114,7 +123,10 @@ fun SplitLayout(
         val edgeHandlePx = with(density) { EdgeHandleWidth.toPx() }
         val edgePx = with(density) { FullscreenFingerEdge.toPx() }
         val rubberRange = with(density) { 180.dp.toPx() }
-        CompositionLocalProvider(LocalDetailFullscreen provides controls) {
+        CompositionLocalProvider(
+            LocalDetailFullscreen provides controls,
+            LocalSplitResize provides resize,
+        ) {
             Box(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxSize()) {
                     Box(
@@ -195,12 +207,15 @@ private fun SplitDivider(
                                 if (committed) {
                                     if (state.motion == null && state.fullscreen.floatValue < 1f) {
                                         state.animateTo(scope, 1f)
+                                    } else if (state.motion == null) {
+                                        state.settle()
                                     }
                                     return
                                 }
                                 if (restoring && travel < slop) {
                                     state.locked = true
                                     if (state.fullscreen.floatValue < 1f) state.animateTo(scope, 1f)
+                                    else state.settle()
                                     return
                                 }
                                 if (restoring && state.fullscreen.floatValue > 0.01f && dragX < minPx) {
@@ -213,7 +228,7 @@ private fun SplitDivider(
                             }
                             detectHorizontalDragGestures(
                                 onDragStart = { offset ->
-                                    state.stop()
+                                    state.holdResize()
                                     committed = false
                                     travel = 0f
                                     val shown = state.dividerPx(total)
@@ -309,12 +324,43 @@ private class SplitDragState(
     val extra = mutableFloatStateOf(0f)
     val fullscreen = mutableFloatStateOf(0f)
     var locked by mutableStateOf(false)
+    var resizing by mutableStateOf(false)
     var detailOpen: Boolean = false
     var motion: Job? = null
+    private var motionToken = 0
 
-    fun stop() {
+    /** 手指按下或打断上一段动画。右栏继续用上一次的宽度，直到 settle。 */
+    fun holdResize() {
+        motionToken++
         motion?.cancel()
         motion = null
+        resizing = true
+    }
+
+    /** 分界线已经停住。取消未完成的动画，并允许右栏按当前宽度重排。 */
+    fun settle() {
+        motionToken++
+        motion?.cancel()
+        motion = null
+        resizing = false
+    }
+
+    private fun launchMotion(scope: CoroutineScope, block: suspend () -> Unit) {
+        motionToken++
+        val token = motionToken
+        motion?.cancel()
+        motion = null
+        resizing = true
+        motion = scope.launch {
+            try {
+                block()
+            } finally {
+                if (token == motionToken) {
+                    motion = null
+                    resizing = false
+                }
+            }
+        }
     }
 
     fun basePx(total: Float): Float {
@@ -332,9 +378,8 @@ private class SplitDragState(
 
     /** 0 是正常分栏，1 是正文铺满、分界线贴在屏幕左缘。 */
     fun animateTo(scope: CoroutineScope, target: Float) {
-        stop()
         val start = fullscreen.floatValue
-        motion = scope.launch {
+        launchMotion(scope) {
             Animatable(start).animateTo(target.coerceIn(0f, 1f), SplitSpring) {
                 fullscreen.floatValue = value.coerceIn(0f, 1f)
             }
@@ -342,29 +387,29 @@ private class SplitDragState(
             if (target >= 1f) {
                 extra.floatValue = 0f
                 locked = true
-                return@launch
+            } else {
+                // 从越界位置收回时，先跟着进度回到分界，再把阻力位移弹回限度内。
+                val extraStart = extra.floatValue
+                if (abs(extraStart) < 0.5f) {
+                    extra.floatValue = 0f
+                } else {
+                    Animatable(extraStart).animateTo(0f, SplitSpring) {
+                        extra.floatValue = value
+                    }
+                    extra.floatValue = 0f
+                }
             }
-            // 从越界位置收回时，先跟着进度回到分界，再把阻力位移弹回限度内。
-            val extraStart = extra.floatValue
-            if (abs(extraStart) < 0.5f) {
-                extra.floatValue = 0f
-                return@launch
-            }
-            Animatable(extraStart).animateTo(0f, SplitSpring) {
-                extra.floatValue = value
-            }
-            extra.floatValue = 0f
         }
     }
 
     fun springExtraHome(scope: CoroutineScope) {
-        stop()
         val start = extra.floatValue
         if (abs(start) < 0.5f) {
             extra.floatValue = 0f
+            settle()
             return
         }
-        motion = scope.launch {
+        launchMotion(scope) {
             Animatable(start).animateTo(0f, SplitSpring) {
                 extra.floatValue = value
             }

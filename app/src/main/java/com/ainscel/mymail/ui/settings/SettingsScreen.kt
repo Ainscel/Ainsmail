@@ -38,6 +38,7 @@ import com.ainscel.mymail.ui.detail.SplitFullscreenButton
 import com.ainscel.mymail.ui.shell.LocalDetailHandlesBack
 import com.ainscel.mymail.ui.shell.MailCapsuleHeight
 import com.ainscel.mymail.ui.shell.MailChromeInset
+import com.ainscel.mymail.ui.shell.holdWidthUntilSettled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -226,7 +227,11 @@ private fun SettingsSectionFrame(
 ) {
     val handlesBack = LocalDetailHandlesBack.current
     Box(modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .holdWidthUntilSettled()
+                .fillMaxSize(),
+        ) {
             Row(
                 Modifier
                     .fillMaxWidth()

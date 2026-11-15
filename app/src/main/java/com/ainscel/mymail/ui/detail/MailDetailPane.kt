@@ -31,6 +31,7 @@ import com.ainscel.mymail.ui.shell.LocalDetailFullscreen
 import com.ainscel.mymail.ui.shell.LocalDetailHandlesBack
 import com.ainscel.mymail.ui.shell.MailCapsuleHeight
 import com.ainscel.mymail.ui.shell.MailChromeInset
+import com.ainscel.mymail.ui.shell.holdWidthUntilSettled
 import com.ainscel.mymail.ui.shell.horizontalDragOrScroll
 
 private val DetailActionGap = 8.dp
@@ -58,7 +59,12 @@ fun MailDetailPane(
             ),
     ) {
         if (mail == null) {
-            Box(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp)) {
+            Box(
+                Modifier
+                    .holdWidthUntilSettled()
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+            ) {
                 Text(
                     text = stringResource(R.string.detail_missing),
                     style = MaterialTheme.typography.bodyLarge,
@@ -68,6 +74,7 @@ fun MailDetailPane(
         }
         Column(
             Modifier
+                .holdWidthUntilSettled()
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 16.dp),
