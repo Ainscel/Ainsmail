@@ -7,7 +7,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-const val SECRET_SCHEMA_VERSION = 2
+const val SECRET_SCHEMA_VERSION = 3
 
 private val documentJson = Json {
     ignoreUnknownKeys = true
@@ -18,6 +18,8 @@ private val documentJson = Json {
 /**
  * 加密文件里的整份内容。
  * [SecretStore.Secrets] 仍只放全局配置。账号凭证在 [accounts]，不进那一组字段。
+ * schema 3：Gmail 存访问令牌与过期时间；不再存刷新令牌与 Web 客户端密钥。
+ * 旧版 `refreshToken` / `googleClientSecret` 字段靠 ignoreUnknownKeys 读入后丢弃。
  */
 @Serializable
 data class SecretDocument(
@@ -25,14 +27,12 @@ data class SecretDocument(
     val deepSeekApiKey: String = "",
     val deepSeekModel: String = SecretStore.DEFAULT_MODEL,
     val googleClientId: String = "",
-    val googleClientSecret: String = "",
     val accounts: List<AccountRecord> = emptyList(),
 ) {
     fun toSecrets(): SecretStore.Secrets = SecretStore.Secrets(
         deepSeekApiKey = deepSeekApiKey,
         deepSeekModel = deepSeekModel,
         googleClientId = googleClientId,
-        googleClientSecret = googleClientSecret,
     ).normalized()
 
     /** 只换全局配置，账号段原样留下。 */
@@ -43,7 +43,6 @@ data class SecretDocument(
             deepSeekApiKey = next.deepSeekApiKey,
             deepSeekModel = next.deepSeekModel,
             googleClientId = next.googleClientId,
-            googleClientSecret = next.googleClientSecret,
         )
     }
 
@@ -56,7 +55,6 @@ data class SecretDocument(
         deepSeekApiKey = deepSeekApiKey.trim(),
         deepSeekModel = deepSeekModel.trim().ifBlank { SecretStore.DEFAULT_MODEL },
         googleClientId = googleClientId.trim(),
-        googleClientSecret = googleClientSecret.trim(),
         accounts = accounts.map { it.normalized() },
     )
 
@@ -64,7 +62,8 @@ data class SecretDocument(
 }
 
 /**
- * 一个账号的凭证。界面只拿 [profile]，授权码和刷新令牌不出这个类型。
+ * 一个账号的凭证。界面只拿 [profile]。
+ * QQ 用 [authCode]；Gmail 用 [accessToken] 与 [accessTokenExpiresAtEpochMs]。
  * [toString] 不带凭证，避免进日志。
  */
 @Serializable
@@ -75,13 +74,14 @@ data class AccountRecord(
     val displayName: String,
     val avatarFile: String? = null,
     val authCode: String = "",
-    val refreshToken: String = "",
+    val accessToken: String = "",
+    val accessTokenExpiresAtEpochMs: Long = 0L,
 ) {
     fun normalized(): AccountRecord = copy(
         address = address.trim(),
         displayName = displayName.trim(),
         authCode = authCode.trim(),
-        refreshToken = refreshToken.trim(),
+        accessToken = accessToken.trim(),
     )
 
     fun profile(): Account? {

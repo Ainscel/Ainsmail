@@ -109,3 +109,12 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - `GoogleAndroidLogin`：缺 Gmail 范围、无 server auth code、换令牌 HTTP / OAuth 错误、缺刷新令牌、userinfo 失败、`ApiException` 状态码都会打日志。
 - `AccountLoginViewModel` / `AccountBook`：未配置客户端、授权页取消、落盘失败等路径同样记录。
 - 令牌响应用 `diagnoseTokenResponse` 只暴露 `error` / `error_description` 或字段有无；单测覆盖不泄密。
+
+## 2026-11-16 03:35
+
+按「仅 Android 客户端」合规要求重构 Gmail 登录，清掉桌面回环 / offline access 遗留。
+
+- 根因：`requestOfflineAccess(Android 客户端 ID)` 不符合 Google 规定（该参数必须是 Web server client），手机上表现为 `ApiException 8 [28405]`。
+- 授权请求只带四个范围，不再 offline access、不再换刷新令牌、不再传客户端 ID 给 Play。
+- 加密 schema 升到 3：Gmail 存 `accessToken` + 过期时间；去掉 `refreshToken`、设置里的 Web 客户端密钥与相关换令牌代码。
+- `AccountLoginViewModel` 去掉 `pendingClient` / `waitingForBrowser` 等回环时代命名；设置与隐私政策、需求文档同步。

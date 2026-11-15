@@ -64,7 +64,7 @@ internal fun AccountLoginLayer(
             onDismiss = onDismissQq,
         )
     }
-    if (login.state.waitingForBrowser) {
+    if (login.state.waitingForGoogle) {
         GmailWaitDialog(onCancel = login::cancelGmail)
     }
 }

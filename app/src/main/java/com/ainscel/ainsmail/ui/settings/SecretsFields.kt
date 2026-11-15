@@ -78,29 +78,6 @@ internal fun GoogleFields(
         supportingText = { Text(stringResource(R.string.settings_client_id_hint)) },
         singleLine = true,
     )
-    OutlinedTextField(
-        value = state.clientSecret,
-        onValueChange = { onEdit(SecretsEdit.ClientSecret(it)) },
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-        label = { Text(stringResource(R.string.settings_client_secret_optional)) },
-        supportingText = { Text(stringResource(R.string.settings_client_secret_hint)) },
-        singleLine = true,
-        visualTransformation = if (state.revealClientSecret) {
-            VisualTransformation.None
-        } else {
-            PasswordVisualTransformation()
-        },
-        keyboardOptions = SecretKeyboard,
-        trailingIcon = {
-            TextButton(onClick = { onEdit(SecretsEdit.ToggleClientSecret) }) {
-                Text(
-                    stringResource(
-                        if (state.revealClientSecret) R.string.settings_hide else R.string.settings_show,
-                    ),
-                )
-            }
-        },
-    )
     Text(
         text = stringResource(R.string.settings_google_help),
         modifier = Modifier.padding(top = 12.dp),

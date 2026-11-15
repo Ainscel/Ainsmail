@@ -6,8 +6,8 @@ import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.ApiException
-import com.google.android.gms.common.api.Scope
 import com.google.android.gms.common.api.CommonStatusCodes
+import com.google.android.gms.common.api.Scope
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
@@ -23,7 +23,8 @@ sealed interface GoogleSignIn {
     class Ok(
         val email: String,
         val name: String,
-        val refreshToken: String,
+        val accessToken: String,
+        val expiresAtEpochMs: Long,
         val picture: ByteArray?,
     ) : GoogleSignIn {
         override fun toString(): String = "GoogleSignIn.Ok"
@@ -39,13 +40,14 @@ enum class GoogleSignInFailure {
 }
 
 /**
- * Android 客户端通过 Play 授权回到应用，不再走本机回环。
- * 需要刷新令牌时请求 offline access，再用 server auth code 换令牌。
+ * 仅用 Android 客户端 + Play [AuthorizationClient]。
+ * 不申请 offline access，不换刷新令牌；访问令牌过期后再静默 authorize。
+ * Android 客户端 ID 只在 Cloud Console 登记包名与 SHA-1，不传入授权请求。
  */
 class GoogleAndroidLogin(
     private val io: CoroutineDispatcher,
 ) {
-    fun authorizationRequest(client: GoogleClient): AuthorizationRequest =
+    fun authorizationRequest(): AuthorizationRequest =
         AuthorizationRequest.builder()
             .setRequestedScopes(
                 listOf(
@@ -55,56 +57,24 @@ class GoogleAndroidLogin(
                     Scope(GMAIL_MAIL_SCOPE),
                 ),
             )
-            .requestOfflineAccess(client.id, true)
             .build()
 
-    suspend fun begin(activity: Activity, client: GoogleClient): AuthorizationResult {
-        val request = authorizationRequest(client)
-        return Identity.getAuthorizationClient(activity).authorize(request).await()
-    }
+    suspend fun begin(activity: Activity): AuthorizationResult =
+        Identity.getAuthorizationClient(activity).authorize(authorizationRequest()).await()
 
     fun resultFromIntent(activity: Activity, data: Intent?): AuthorizationResult =
         Identity.getAuthorizationClient(activity).getAuthorizationResultFromIntent(data)
 
-    suspend fun complete(
-        client: GoogleClient,
-        result: AuthorizationResult,
-    ): GoogleSignIn = withContext(io) {
+    suspend fun complete(result: AuthorizationResult): GoogleSignIn = withContext(io) {
         try {
             val granted = result.grantedScopes.map { it.toString() }
             if (granted.none { it.contains("mail.google.com") }) {
-                LoginLog.w(
-                    "gmail_scope",
-                    "mail.google.com missing granted=$granted",
-                )
+                LoginLog.w("gmail_scope", "mail.google.com missing granted=$granted")
                 return@withContext GoogleSignIn.Failed(GoogleSignInFailure.Denied)
             }
-            val code = result.serverAuthCode?.trim().orEmpty()
-            val access = result.accessToken?.trim().orEmpty()
-            val tokens = when {
-                code.isNotEmpty() -> exchangeServerAuth(client, code)
-                else -> {
-                    LoginLog.w(
-                        "auth_code",
-                        "serverAuthCode empty hasAccess=${access.isNotEmpty()} hasSecret=${client.secret.isNotBlank()}",
-                    )
-                    null
-                }
-            }
-            val accessToken = tokens?.accessToken?.ifBlank { null } ?: access.ifBlank { null }
-            if (accessToken == null) {
-                LoginLog.w(
-                    "access_token",
-                    "unavailable after exchange hasCode=${code.isNotEmpty()} hasSecret=${client.secret.isNotBlank()}",
-                )
-                return@withContext GoogleSignIn.Failed(GoogleSignInFailure.Rejected)
-            }
-            val refreshToken = tokens?.refreshToken?.trim().orEmpty()
-            if (refreshToken.isEmpty()) {
-                LoginLog.w(
-                    "refresh_token",
-                    "missing after exchange hasCode=${code.isNotEmpty()} hasSecret=${client.secret.isNotBlank()}",
-                )
+            val accessToken = result.accessToken?.trim().orEmpty()
+            if (accessToken.isEmpty()) {
+                LoginLog.w("access_token", "empty after authorize")
                 return@withContext GoogleSignIn.Failed(GoogleSignInFailure.Rejected)
             }
             val profileRaw = try {
@@ -114,7 +84,7 @@ class GoogleAndroidLogin(
             } catch (error: Exception) {
                 LoginLog.e(
                     "userinfo",
-                    "request failed ${error.javaClass.simpleName}: ${error.message}",
+                    "${error.javaClass.simpleName}: ${error.message}",
                     error,
                 )
                 return@withContext GoogleSignIn.Failed(GoogleSignInFailure.Rejected)
@@ -128,7 +98,13 @@ class GoogleAndroidLogin(
             if (profile.pictureUrl != null && picture == null) {
                 LoginLog.w("avatar", "download skipped or failed")
             }
-            GoogleSignIn.Ok(profile.email, profile.name, refreshToken, picture)
+            GoogleSignIn.Ok(
+                email = profile.email,
+                name = profile.name,
+                accessToken = accessToken,
+                expiresAtEpochMs = System.currentTimeMillis() + GOOGLE_ACCESS_TOKEN_TTL_MS,
+                picture = picture,
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (api: ApiException) {
@@ -140,50 +116,8 @@ class GoogleAndroidLogin(
             )
             GoogleSignIn.Failed(reason)
         } catch (error: Exception) {
-            LoginLog.e(
-                "complete",
-                "${error.javaClass.simpleName}: ${error.message}",
-                error,
-            )
+            LoginLog.e("complete", "${error.javaClass.simpleName}: ${error.message}", error)
             GoogleSignIn.Failed(GoogleSignInFailure.Rejected)
-        }
-    }
-
-    private fun exchangeServerAuth(client: GoogleClient, code: String): IssuedTokens? {
-        val body = serverAuthTokenForm(client.id, client.secret, code)
-        val raw = postForm(GOOGLE_TOKEN, body)
-        if (raw == null) {
-            LoginLog.w(
-                "token_exchange",
-                "http empty hasSecret=${client.secret.isNotBlank()}",
-            )
-            return null
-        }
-        val tokens = parseIssuedTokens(raw)
-        if (tokens == null) {
-            LoginLog.w("token_exchange", diagnoseTokenResponse(raw))
-        }
-        return tokens
-    }
-
-    private fun postForm(url: String, body: String): String? {
-        val connection = open(url, "POST")
-        return try {
-            connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-            connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            readText(connection, "token_http")
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            LoginLog.e(
-                "token_http",
-                "${error.javaClass.simpleName}: ${error.message}",
-                error,
-            )
-            null
-        } finally {
-            connection.disconnect()
         }
     }
 
@@ -209,11 +143,7 @@ class GoogleAndroidLogin(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            LoginLog.e(
-                "avatar_http",
-                "${error.javaClass.simpleName}: ${error.message}",
-                error,
-            )
+            LoginLog.e("avatar_http", "${error.javaClass.simpleName}: ${error.message}", error)
             null
         } finally {
             connection.disconnect()
@@ -239,7 +169,7 @@ class GoogleAndroidLogin(
         }
         val text = bytes.toString(Charsets.UTF_8)
         if (code !in 200..299) {
-            LoginLog.w(step, "status=$code ${diagnoseTokenResponse(text)}")
+            LoginLog.w(step, "status=$code bodyLength=${text.length}")
             return null
         }
         return text

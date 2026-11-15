@@ -23,9 +23,7 @@ data class SecretsUiState(
     val apiKey: String = "",
     val model: String = SecretStore.DEFAULT_MODEL,
     val clientId: String = "",
-    val clientSecret: String = "",
     val revealKey: Boolean = false,
-    val revealClientSecret: Boolean = false,
     val savedTick: Long = 0,
     val errorTick: Long = 0,
 )
@@ -46,7 +44,6 @@ class SecretsViewModel(
                     apiKey = read.secrets.deepSeekApiKey,
                     model = read.secrets.deepSeekModel,
                     clientId = read.secrets.googleClientId,
-                    clientSecret = read.secrets.googleClientSecret,
                 )
                 SecretRead.Missing -> state.copy(loaded = true)
                 is SecretRead.Unreadable -> state.copy(loaded = true, loadFailed = true)
@@ -59,9 +56,7 @@ class SecretsViewModel(
             is SecretsEdit.ApiKey -> state = state.copy(apiKey = edit.value)
             is SecretsEdit.Model -> state = state.copy(model = edit.value)
             is SecretsEdit.ClientId -> state = state.copy(clientId = edit.value)
-            is SecretsEdit.ClientSecret -> state = state.copy(clientSecret = edit.value)
             SecretsEdit.ToggleKey -> state = state.copy(revealKey = !state.revealKey)
-            SecretsEdit.ToggleClientSecret -> state = state.copy(revealClientSecret = !state.revealClientSecret)
             SecretsEdit.Save -> save()
         }
     }
@@ -76,7 +71,6 @@ class SecretsViewModel(
                             deepSeekApiKey = current.apiKey,
                             deepSeekModel = current.model,
                             googleClientId = current.clientId,
-                            googleClientSecret = current.clientSecret,
                         ),
                     )
                     store.read()
@@ -93,7 +87,6 @@ class SecretsViewModel(
                     apiKey = read.secrets.deepSeekApiKey,
                     model = read.secrets.deepSeekModel,
                     clientId = read.secrets.googleClientId,
-                    clientSecret = read.secrets.googleClientSecret,
                     savedTick = state.savedTick + 1,
                 )
                 SecretRead.Missing -> state.copy(loadFailed = true, errorTick = state.errorTick + 1)
@@ -119,8 +112,6 @@ sealed interface SecretsEdit {
     data class ApiKey(val value: String) : SecretsEdit
     data class Model(val value: String) : SecretsEdit
     data class ClientId(val value: String) : SecretsEdit
-    data class ClientSecret(val value: String) : SecretsEdit
     data object ToggleKey : SecretsEdit
-    data object ToggleClientSecret : SecretsEdit
     data object Save : SecretsEdit
 }

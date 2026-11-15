@@ -15,8 +15,8 @@ import javax.crypto.spec.GCMParameterSpec
 
 /**
  * 用系统密钥库加密本地配置。
- * 全局的 DeepSeek 和 Google Android 客户端 ID（以及可选的 Web 客户端密钥）在 [Secrets]。
- * 按账号的授权码和刷新令牌在同一份文件的另一段，不进 [Secrets]，也不写日志。
+ * 全局的 DeepSeek 和 Google Android 客户端 ID 在 [Secrets]。
+ * 按账号的授权码和访问令牌在同一份文件的另一段，不进 [Secrets]，也不写日志。
  */
 class SecretStore(context: Context) {
     private val file = File(context.applicationContext.filesDir, FILE_NAME)
@@ -136,13 +136,11 @@ class SecretStore(context: Context) {
         val deepSeekApiKey: String = "",
         val deepSeekModel: String = DEFAULT_MODEL,
         val googleClientId: String = "",
-        val googleClientSecret: String = "",
     ) {
         fun normalized(): Secrets = copy(
             deepSeekApiKey = deepSeekApiKey.trim(),
             deepSeekModel = deepSeekModel.trim().ifBlank { DEFAULT_MODEL },
             googleClientId = googleClientId.trim(),
-            googleClientSecret = googleClientSecret.trim(),
         )
     }
 

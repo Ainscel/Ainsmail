@@ -30,7 +30,7 @@ sealed interface AccountWrite {
 
 /**
  * 已登录账号的唯一入口。
- * 界面只看见 [Account]。授权码和刷新令牌留在加密文件里。
+ * 界面只看见 [Account]。QQ 授权码与 Gmail 访问令牌留在加密文件里。
  */
 class AccountBook(
     context: Context,
@@ -61,21 +61,13 @@ class AccountBook(
 
     fun gmailReady(): Boolean {
         val read = store.read()
-        return read is SecretRead.Ok && gmailClientReady(read.secrets.googleClientId)
-    }
-
-    fun googleClient(): GoogleClient? {
-        val read = store.read()
         if (read !is SecretRead.Ok) {
-            LoginLog.w("google_client", "secrets unavailable kind=${read::class.simpleName}")
-            return null
+            LoginLog.w("gmail_ready", "secrets unavailable kind=${read::class.simpleName}")
+            return false
         }
-        val secrets = read.secrets
-        if (!gmailClientReady(secrets.googleClientId)) {
-            LoginLog.w("google_client", "android_client_id_not_ready")
-            return null
-        }
-        return GoogleClient(secrets.googleClientId, secrets.googleClientSecret)
+        val ready = gmailClientReady(read.secrets.googleClientId)
+        if (!ready) LoginLog.w("gmail_ready", "android_client_id_blank")
+        return ready
     }
 
     fun addQq(address: String, displayName: String, authCode: String, avatar: ByteArray?): AccountWrite {
@@ -87,22 +79,30 @@ class AccountBook(
             address = email,
             displayName = displayName,
             authCode = code,
-            refreshToken = "",
+            accessToken = "",
+            accessTokenExpiresAtEpochMs = 0L,
             avatar = avatar,
             avatarRequired = avatar != null,
         )
     }
 
-    fun addGmail(address: String, displayName: String, refreshToken: String, avatar: ByteArray?): AccountWrite {
+    fun addGmail(
+        address: String,
+        displayName: String,
+        accessToken: String,
+        expiresAtEpochMs: Long,
+        avatar: ByteArray?,
+    ): AccountWrite {
         val email = mailboxAddress(address) ?: return AccountWrite.InvalidAddress
-        val token = refreshToken.trim()
+        val token = accessToken.trim()
         if (token.isEmpty()) return AccountWrite.BlankCode
         return insert(
             providerKey = AccountRecord.PROVIDER_GMAIL,
             address = email,
             displayName = displayName,
             authCode = "",
-            refreshToken = token,
+            accessToken = token,
+            accessTokenExpiresAtEpochMs = expiresAtEpochMs,
             avatar = avatar,
             avatarRequired = false,
         )
@@ -144,7 +144,8 @@ class AccountBook(
         address: String,
         displayName: String,
         authCode: String,
-        refreshToken: String,
+        accessToken: String,
+        accessTokenExpiresAtEpochMs: Long,
         avatar: ByteArray?,
         avatarRequired: Boolean,
     ): AccountWrite = synchronized(lock) {
@@ -165,7 +166,8 @@ class AccountBook(
             displayName = name,
             avatarFile = relative,
             authCode = authCode,
-            refreshToken = refreshToken,
+            accessToken = accessToken,
+            accessTokenExpiresAtEpochMs = accessTokenExpiresAtEpochMs,
         )
         val written = commit()
         if (written !is AccountWrite.Saved) deleteAvatar(relative)

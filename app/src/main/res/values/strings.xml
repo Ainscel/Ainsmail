@@ -104,11 +104,9 @@
     <string name="settings_deepseek_model">模型名</string>
     <string name="settings_deepseek_model_hint">留空时使用 deepseek-flash。分类时关闭思考。</string>
     <string name="settings_google_section">Google 登录</string>
-    <string name="settings_client_id">OAuth 客户端 ID</string>
-    <string name="settings_client_id_hint">Android 客户端，一般以 .apps.googleusercontent.com 结尾</string>
-    <string name="settings_client_secret_optional">Web 客户端密钥（可选）</string>
-    <string name="settings_client_secret_hint">Android 客户端没有密钥。只有换刷新令牌失败、且同项目另有 Web 客户端时才需要填。</string>
-    <string name="settings_google_help">在 Google Cloud 创建类型为「Android」的客户端。包名填 com.ainscel.ainsmail，并登记本安装包的 SHA-1 签名证书指纹。同意屏幕发布为正式版，范围加上 openid、email、profile 和 https://mail.google.com/。把 Android 客户端 ID 粘贴到上面。登录由系统授权界面完成，成功后会回到本应用。授权页如果出现「未验证的应用」，确认后继续。未填写客户端 ID 时，不能添加 Gmail。</string>
+    <string name="settings_client_id">Android 客户端 ID</string>
+    <string name="settings_client_id_hint">一般以 .apps.googleusercontent.com 结尾。只作添加门槛；Play 靠包名与 SHA-1 识别本应用。</string>
+    <string name="settings_google_help">在 Google Cloud 创建类型为「Android」的客户端。包名填 com.ainscel.ainsmail，并登记本安装包的 SHA-1 签名证书指纹（调试包与正式包指纹通常不同）。同意屏幕发布为正式版，范围加上 openid、email、profile 和 https://mail.google.com/。把 Android 客户端 ID 粘贴到上面。登录用系统授权界面，成功后回到本应用；不申请离线刷新令牌，访问令牌过期后会再次静默授权。授权页如果出现「未验证的应用」，确认后继续。未填写客户端 ID 时，不能添加 Gmail。</string>
     <string name="settings_save">保存</string>
     <string name="settings_saved">已保存</string>
     <string name="settings_secrets_unreadable">密钥暂时读不出来，原来的文件还留着。</string>
