@@ -3,10 +3,13 @@ package com.ainscel.ainsmail.ui.shell
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -15,6 +18,22 @@ import kotlin.math.abs
 
 internal const val MinListFraction = 0.35f
 internal const val MaxListFraction = 0.60f
+private const val DefaultListFraction = 0.40f
+
+private val SplitFractionSaver = Saver<MutableFloatState, Float>(
+    save = { it.floatValue },
+    restore = { saved ->
+        mutableFloatStateOf(saved.coerceIn(MinListFraction, MaxListFraction))
+    },
+)
+
+/** 分栏比例。恢复存档时夹进允许范围，不在每次组合里再校正。 */
+@Composable
+fun rememberSplitFraction(): MutableFloatState {
+    return rememberSaveable(saver = SplitFractionSaver) {
+        mutableFloatStateOf(DefaultListFraction)
+    }
+}
 
 internal val SplitSpring = spring<Float>(
     dampingRatio = 0.86f,

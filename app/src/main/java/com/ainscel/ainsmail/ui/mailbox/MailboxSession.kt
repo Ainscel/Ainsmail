@@ -27,10 +27,6 @@ sealed interface Notice {
     data class TagLimit(override val id: Long) : Notice
     data class TagNeedsType(override val id: Long) : Notice
     data class TagMixedTypes(override val id: Long) : Notice
-    data class LoginPending(override val id: Long) : Notice
-    data class GroupPending(override val id: Long) : Notice
-    data class OriginalPending(override val id: Long) : Notice
-    data class EditPending(override val id: Long) : Notice
 
     val canUndo: Boolean
         get() = this is Deleted || this is Archived

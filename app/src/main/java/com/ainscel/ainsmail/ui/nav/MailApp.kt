@@ -10,9 +10,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -35,6 +33,7 @@ import com.ainscel.ainsmail.ui.mailbox.MailboxViewModel
 import com.ainscel.ainsmail.ui.shell.AccountOverlay
 import com.ainscel.ainsmail.ui.shell.OverlayController
 import com.ainscel.ainsmail.ui.shell.isWideWindow
+import com.ainscel.ainsmail.ui.shell.rememberSplitFraction
 
 @Composable
 fun MailApp(modifier: Modifier = Modifier) {
@@ -46,35 +45,31 @@ fun MailApp(modifier: Modifier = Modifier) {
         )
     }
     val mailbox = viewModel<MailboxViewModel>(factory = mailboxFactory)
-    val state = mailbox.state
+    val chrome = mailbox.chrome
     val backStack = rememberNavBackStack(MailListRoute)
     val overlay = remember { OverlayController() }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val allAccounts = stringResource(R.string.account_all)
     var addDialog by rememberSaveable { mutableStateOf(false) }
-    val splitFraction = rememberSaveable { mutableFloatStateOf(0.40f) }
+    var unavailable by remember { mutableStateOf<UnavailableHint?>(null) }
+    val splitFraction = rememberSplitFraction()
     val context = LocalContext.current
-    // 上一版默认是 34%。已经存下来的比例抬到 40%，并夹到左栏下限 35%。
-    SideEffect {
-        val current = splitFraction.floatValue
-        val next = when {
-            current == 0.34f -> 0.40f
-            current < 0.35f -> 0.35f
-            else -> current
-        }
-        if (next != current) splitFraction.floatValue = next
-    }
 
     MailboxNoticeEffect(
-        notice = state.notice,
+        notice = chrome.notice,
         hostState = snackbarHostState,
         onUndo = { mailbox.perform(MailboxIntent.Undo) },
         onConsumed = { mailbox.perform(MailboxIntent.ConsumeNotice(it)) },
     )
-    LaunchedEffect(state.sectionMailIds) {
+    UnavailableHintEffect(
+        hint = unavailable,
+        hostState = snackbarHostState,
+        onConsumed = { unavailable = null },
+    )
+    LaunchedEffect(chrome.sectionMailIds) {
         val openId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId ?: return@LaunchedEffect
-        if (openId !in state.sectionMailIds) backStack.removeAll { it is MailDetailRoute }
+        if (openId !in chrome.sectionMailIds) backStack.removeAll { it is MailDetailRoute }
     }
     OverlayBackHandler(overlay, scope)
 
@@ -94,17 +89,19 @@ fun MailApp(modifier: Modifier = Modifier) {
                     overlay = overlay,
                     scope = scope,
                     strategy = strategy,
-                    panelWidthPx = panelWidthPx,
+                    onUnavailable = { kind ->
+                        unavailable = UnavailableHint(kind, System.nanoTime())
+                    },
                     onExit = { (context as? Activity)?.finish() },
                 )
                 AccountOverlay(
                     progress = overlay::progress,
                     panelWidth = panelWidth,
                     panelWidthPx = panelWidthPx,
-                    accounts = state.accounts,
-                    selectedAccountId = (state.scope as? MailboxScope.Account)?.id,
-                    currentName = state.selectedAccountName ?: allAccounts,
-                    section = state.section,
+                    accounts = chrome.accounts,
+                    selectedAccountId = (chrome.scope as? MailboxScope.Account)?.id,
+                    currentName = chrome.selectedAccountName ?: allAccounts,
+                    section = chrome.section,
                     onSelectAccount = { id ->
                         mailbox.perform(
                             MailboxIntent.SelectScope(
@@ -123,8 +120,6 @@ fun MailApp(modifier: Modifier = Modifier) {
                         if (backStack.none { it is SettingsHomeRoute }) backStack.add(SettingsHomeRoute)
                     },
                     onClose = { overlay.close(scope) },
-                    onDrag = { overlay.dragBy(it, panelWidthPx) },
-                    onDragFinish = { overlay.release(scope) },
                 )
             }
         }
@@ -135,11 +130,11 @@ fun MailApp(modifier: Modifier = Modifier) {
             onDismiss = { addDialog = false },
             onLogin = {
                 addDialog = false
-                mailbox.perform(MailboxIntent.ShowLoginPending)
+                unavailable = UnavailableHint(UnavailableKind.Login, System.nanoTime())
             },
             onGroup = {
                 addDialog = false
-                mailbox.perform(MailboxIntent.ShowGroupPending)
+                unavailable = UnavailableHint(UnavailableKind.Group, System.nanoTime())
             },
         )
     }

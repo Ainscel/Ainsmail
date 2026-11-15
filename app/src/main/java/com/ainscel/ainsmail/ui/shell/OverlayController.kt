@@ -11,7 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/** 左侧遮罩的开合进度。0 是关上，1 是打开，超出这段时是拉过头的阻力。 */
+/** 左侧遮罩的开合进度。0 是关上，1 是打开。按钮和返回键驱动。 */
 class OverlayController {
     var progress by mutableFloatStateOf(0f)
         private set
@@ -21,16 +21,6 @@ class OverlayController {
         private set
 
     private var job: Job? = null
-
-    fun dragBy(dx: Float, widthPx: Float) {
-        if (widthPx <= 0f) return
-        job?.cancel()
-        moveTo(rubber(progress + dx / widthPx))
-    }
-
-    fun release(scope: CoroutineScope) {
-        animate(scope, if (progress > 0.5f) 1f else 0f)
-    }
 
     fun open(scope: CoroutineScope) {
         animate(scope, 1f)
@@ -57,11 +47,5 @@ class OverlayController {
                 moveTo(value)
             }
         }
-    }
-
-    private fun rubber(value: Float): Float = when {
-        value < 0f -> value * 0.28f
-        value > 1f -> 1f + (value - 1f) * 0.28f
-        else -> value
     }
 }

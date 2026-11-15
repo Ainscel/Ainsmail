@@ -8,8 +8,11 @@ import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.model.TagCatalog
 import com.ainscel.ainsmail.model.TagPool
 import com.ainscel.ainsmail.model.TagWord
+import com.ainscel.ainsmail.model.Account
+import com.ainscel.ainsmail.model.Provider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -159,6 +162,22 @@ class MailboxReducerTest {
         val restored = reduce(archived, MailboxIntent.Undo, 9L).session
         assertEquals(false, restored.mail("a").archived)
         assertEquals(setOf("a"), restored.mailsInSection().ids())
+    }
+
+    @Test
+    fun readingMailKeepsChromeAndAccountList() {
+        val session = MailboxSession(
+            accounts = listOf(Account("a1", "甲", "a@qq.com", Provider.Qq)),
+            mails = listOf(mail("a")),
+            catalog = TagCatalog(emptyList()),
+        )
+        val first = project(session, now = 0L)
+        val read = reduce(session, MailboxIntent.MarkVisibleRead, 1L).session
+        val second = project(read, now = 0L, previousAccounts = first.chrome.accounts)
+
+        assertEquals(first.chrome, second.chrome)
+        assertSame(first.chrome.accounts, second.chrome.accounts)
+        assertEquals(false, second.list.rows.single().unread)
     }
 }
 

@@ -36,7 +36,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ainscel.ainsmail.R
-import com.ainscel.ainsmail.ui.list.avatarColor
 import com.ainscel.ainsmail.ui.mailbox.AccountUi
 import kotlin.math.roundToInt
 

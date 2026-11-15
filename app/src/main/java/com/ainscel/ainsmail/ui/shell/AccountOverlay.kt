@@ -48,8 +48,6 @@ fun AccountOverlay(
     onAdd: () -> Unit,
     onSettings: () -> Unit,
     onClose: () -> Unit,
-    onDrag: (Float) -> Unit,
-    onDragFinish: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val visible by remember { derivedStateOf { abs(progress()) > 0.001f } }
@@ -72,11 +70,7 @@ fun AccountOverlay(
                     val shown = panelWidthPx * progress().coerceAtLeast(0f)
                     IntOffset((shown - panelWidthPx).roundToInt(), 0)
                 }
-                .background(MaterialTheme.colorScheme.surface)
-                .horizontalDragOrScroll(
-                    onDelta = onDrag,
-                    onFinish = { onDragFinish() },
-                ),
+                .background(MaterialTheme.colorScheme.surface),
         ) {
             AvatarColumn(
                 accounts = accounts,

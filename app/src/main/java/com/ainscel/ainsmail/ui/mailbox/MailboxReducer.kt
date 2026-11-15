@@ -53,10 +53,6 @@ fun reduce(session: MailboxSession, intent: MailboxIntent, noticeId: Long): Redu
         MailboxIntent.ArchiveSelected -> ReduceOutcome(session.archive(session.selectedIds, noticeId))
         is MailboxIntent.SetType -> ReduceOutcome(session.setType(intent.type))
         is MailboxIntent.AddTag -> addTag(session, intent.name, noticeId)
-        MailboxIntent.ShowLoginPending -> ReduceOutcome(session.copy(notice = Notice.LoginPending(noticeId)))
-        MailboxIntent.ShowGroupPending -> ReduceOutcome(session.copy(notice = Notice.GroupPending(noticeId)))
-        MailboxIntent.ShowOriginalPending -> ReduceOutcome(session.copy(notice = Notice.OriginalPending(noticeId)))
-        MailboxIntent.ShowEditPending -> ReduceOutcome(session.copy(notice = Notice.EditPending(noticeId)))
         is MailboxIntent.ConsumeNotice -> {
             if (session.notice?.id == intent.id) {
                 ReduceOutcome(session.copy(notice = null))

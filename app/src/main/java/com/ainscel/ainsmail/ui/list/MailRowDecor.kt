@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ainscel.ainsmail.model.TagPool
 import com.ainscel.ainsmail.ui.mailbox.TagChipUi
+import com.ainscel.ainsmail.ui.shell.avatarColor
 
 @Composable
 internal fun SenderAvatar(

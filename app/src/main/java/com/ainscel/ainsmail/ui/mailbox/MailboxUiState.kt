@@ -7,22 +7,31 @@ import com.ainscel.ainsmail.model.ReadFilter
 import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.model.TagPool
 
+/**
+ * 根界面要的那一份：当前范围、板块、账号和提示。
+ * 列表行不放这里，改一封信不会把遮罩和根组合一起重组。
+ */
 @Immutable
-data class MailboxUiState(
+data class MailboxChrome(
     val scope: MailboxScope,
     val selectedAccountName: String?,
     val section: Section,
     /** 当前账号范围和板块里的信。筛选不放进来，打开的正文不会因为筛选被关掉。 */
     val sectionMailIds: Set<String>,
-    val rows: List<MailRowUi>,
+    val accounts: List<AccountUi>,
+    val notice: Notice?,
+)
+
+/** 只有列表页订阅。筛选和行放在一起，根界面不读。 */
+@Immutable
+data class MailboxList(
     val readFilter: ReadFilter,
     val selectedTagNames: Set<String>,
     val typeFilter: MailType?,
     val multiSelect: Boolean,
     val selectedCount: Int,
     val tagGroups: List<TagGroupUi>,
-    val accounts: List<AccountUi>,
-    val notice: Notice?,
+    val rows: List<MailRowUi>,
 )
 
 @Immutable
@@ -87,10 +96,6 @@ sealed interface MailboxIntent {
     data object ArchiveSelected : MailboxIntent
     data class SetType(val type: MailType) : MailboxIntent
     data class AddTag(val name: String) : MailboxIntent
-    data object ShowLoginPending : MailboxIntent
-    data object ShowGroupPending : MailboxIntent
-    data object ShowOriginalPending : MailboxIntent
-    data object ShowEditPending : MailboxIntent
     data class ConsumeNotice(val id: Long) : MailboxIntent
     data object Undo : MailboxIntent
 }

@@ -24,25 +24,24 @@ import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.ui.mailbox.AddTagResult
+import com.ainscel.ainsmail.ui.mailbox.MailboxChrome
 import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
-import com.ainscel.ainsmail.ui.mailbox.MailboxUiState
+import com.ainscel.ainsmail.ui.mailbox.MailboxList
 import com.ainscel.ainsmail.ui.mailbox.title
 import com.ainscel.ainsmail.ui.shell.MailChromeInset
-import com.ainscel.ainsmail.ui.shell.horizontalDragOrScroll
 
 private const val RowReading = "reading"
 private const val RowSelecting = "selecting"
 
 @Composable
 fun MailListPane(
-    state: MailboxUiState,
+    chrome: MailboxChrome,
+    list: MailboxList,
     openMailId: String?,
     onIntent: (MailboxIntent) -> AddTagResult?,
     onOpenMail: (String) -> Unit,
     onCompose: () -> Unit,
     onOpenOverlay: () -> Unit,
-    onOverlayDrag: (Float) -> Unit,
-    onOverlayRelease: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -56,16 +55,16 @@ fun MailListPane(
     fun perform(intent: MailboxIntent) {
         onIntent(intent)
     }
-    LaunchedEffect(state.scope, state.section) {
+    LaunchedEffect(chrome.scope, chrome.section) {
         listState.scrollToItem(0)
     }
 
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            if (state.multiSelect) {
+            if (list.multiSelect) {
                 MultiSelectBar(
-                    count = state.selectedCount,
-                    enabled = state.selectedCount > 0,
+                    count = list.selectedCount,
+                    enabled = list.selectedCount > 0,
                     onDelete = { perform(MailboxIntent.DeleteSelected) },
                     onChangeType = { typeDialog = true },
                     onAddTag = { tagDialog = true },
@@ -74,7 +73,7 @@ fun MailListPane(
                 )
             } else {
                 ListTopBar(
-                    title = stringResource(state.section.title()),
+                    title = stringResource(chrome.section.title()),
                     onTitleClick = onOpenOverlay,
                     menuOpen = menuOpen,
                     onMenuOpen = { menuOpen = true },
@@ -95,7 +94,7 @@ fun MailListPane(
                     },
                 )
             }
-            if (state.rows.isEmpty()) {
+            if (list.rows.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         text = stringResource(R.string.list_empty),
@@ -105,28 +104,22 @@ fun MailListPane(
             } else {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .horizontalDragOrScroll(
-                            excludeStartEdge = true,
-                            onDelta = onOverlayDrag,
-                            onFinish = { onOverlayRelease() },
-                        ),
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
-                        bottom = if (state.section == Section.Inbox) 88.dp else 16.dp,
+                        bottom = if (chrome.section == Section.Inbox) 88.dp else 16.dp,
                     ),
                 ) {
                     items(
-                        items = state.rows,
+                        items = list.rows,
                         key = { it.id },
-                        contentType = { if (state.multiSelect) RowSelecting else RowReading },
+                        contentType = { if (list.multiSelect) RowSelecting else RowReading },
                     ) { row ->
                         MailRow(
                             row = row,
                             selected = row.id == openMailId,
-                            multiSelect = state.multiSelect,
+                            multiSelect = list.multiSelect,
                             onClick = {
-                                if (state.multiSelect) {
+                                if (list.multiSelect) {
                                     perform(MailboxIntent.ToggleSelected(row.id))
                                 } else {
                                     onOpenMail(row.id)
@@ -138,10 +131,10 @@ fun MailListPane(
                 }
             }
         }
-        if (state.section == Section.Inbox) {
+        if (chrome.section == Section.Inbox) {
             TypeCapsule(
                 expanded = capsuleExpanded,
-                selected = state.typeFilter,
+                selected = list.typeFilter,
                 onExpand = { capsuleExpanded = true },
                 onCollapse = {
                     perform(MailboxIntent.SetTypeFilter(null))
@@ -178,9 +171,9 @@ fun MailListPane(
     )
     if (filterOpen) {
         FilterDialog(
-            readFilter = state.readFilter,
-            selectedTags = state.selectedTagNames,
-            groups = state.tagGroups,
+            readFilter = list.readFilter,
+            selectedTags = list.selectedTagNames,
+            groups = list.tagGroups,
             onReadFilter = { perform(MailboxIntent.SetReadFilter(it)) },
             onToggleTag = { perform(MailboxIntent.ToggleTagFilter(it)) },
             onDismiss = { filterOpen = false },

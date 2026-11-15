@@ -28,14 +28,12 @@ import com.ainscel.ainsmail.ui.shell.MailChromeInset
 import com.ainscel.ainsmail.ui.shell.MailRoundButton
 import com.ainscel.ainsmail.ui.shell.SplitFullscreenButton
 import com.ainscel.ainsmail.ui.shell.holdWidthUntilSettled
-import com.ainscel.ainsmail.ui.shell.horizontalDragOrScroll
 
 private val DetailActionGap = 8.dp
 
 @Composable
 fun MailDetailPane(
     detail: MailDetailUi?,
-    onClose: () -> Unit,
     onOriginalLayout: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -43,16 +41,7 @@ fun MailDetailPane(
 ) {
     val handlesBack = LocalDetailHandlesBack.current
     val fullscreen = LocalDetailFullscreen.current
-    Box(
-        modifier
-            .fillMaxSize()
-            .horizontalDragOrScroll(
-                excludeStartEdge = handlesBack,
-                excludeEndEdge = true,
-                onDelta = {},
-                onFinish = { onClose() },
-            ),
-    ) {
+    Box(modifier.fillMaxSize()) {
         if (detail == null) {
             Box(
                 Modifier

@@ -26,7 +26,7 @@ internal fun MailNavHost(
     overlay: OverlayController,
     scope: CoroutineScope,
     strategy: SceneStrategy<NavKey>,
-    panelWidthPx: Float,
+    onUnavailable: (UnavailableKind) -> Unit,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -45,27 +45,21 @@ internal fun MailNavHost(
             entry<MailListRoute>(
                 metadata = TwoPaneStrategy.primaryPane(PrimaryEmpty.Detail),
             ) {
-                val state = mailbox.state
                 MailListPane(
-                    state = state,
+                    chrome = mailbox.chrome,
+                    list = mailbox.list,
                     openMailId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId,
                     onIntent = mailbox::onIntent,
                     onOpenMail = { id -> openMail(backStack, id) },
                     onCompose = { backStack.add(ComposeRoute()) },
                     onOpenOverlay = { overlay.open(scope) },
-                    onOverlayDrag = { overlay.dragBy(it, panelWidthPx) },
-                    onOverlayRelease = { overlay.release(scope) },
                 )
             }
             entry<MailDetailRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->
-                // 读取 state 让这一页跟着投影重组。查找本身不再碰快照。
-                @Suppress("UNUSED_VARIABLE")
-                val state = mailbox.state
                 MailDetailPane(
                     detail = mailbox.detail(route.mailId),
-                    onClose = { backStack.removeAll { it is MailDetailRoute } },
-                    onOriginalLayout = { mailbox.perform(MailboxIntent.ShowOriginalPending) },
-                    onEdit = { mailbox.perform(MailboxIntent.ShowEditPending) },
+                    onOriginalLayout = { onUnavailable(UnavailableKind.OriginalLayout) },
+                    onEdit = { onUnavailable(UnavailableKind.Edit) },
                     onDelete = {
                         mailbox.perform(MailboxIntent.DeleteMail(route.mailId))
                         backStack.removeAll { it is MailDetailRoute }
@@ -92,8 +86,6 @@ internal fun MailNavHost(
                 )
             }
             entry<ComposeRoute> { route ->
-                @Suppress("UNUSED_VARIABLE")
-                val state = mailbox.state
                 ComposePlaceholder(
                     replySubject = route.mailId?.let(mailbox::subjectOf),
                     onBack = { backStack.removeLastOrNull() },
