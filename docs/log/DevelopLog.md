@@ -93,3 +93,10 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 
 - 「桌面应用 + 系统浏览器 + 本机回环 + 必填客户端密钥」改为「Android 客户端 + Play 授权回应用 + 必填客户端 ID，Web 密钥可选」。
 - 补充包名、SHA-1、同意屏幕与验收、模块表里的对应表述。
+
+## 2026-11-16 02:42
+
+用根目录 `Ainsmail.jpg` 换上应用图标。
+
+- 生成各密度 `ic_launcher` / `ic_launcher_round` / `ic_launcher_foreground`。
+- API 26+ 走白色底的自适应图标；清单补上 `roundIcon`。
