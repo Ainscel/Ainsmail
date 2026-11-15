@@ -6,8 +6,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
 
 /**
- * 分界线还在拖动或回弹时，子内容继续按上一次停稳的宽度测量。
- * 外层尺寸仍跟当前栏宽走，多出来的部分由父级裁掉。分界线停住后按新宽度重排一次。
+ * 手指按在分界线上时，子内容继续按按下前的宽度测量。
+ * 外层尺寸仍跟当前栏宽走，多出来的部分由父级裁掉。手指离开后立刻按当前宽度重排。
  * 窄屏没有 [LocalSplitResize]，每次都按当前宽度测量。
  */
 @Composable

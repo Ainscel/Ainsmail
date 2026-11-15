@@ -108,10 +108,10 @@ fun SplitLayout(
             if (activeNow) {
                 state.locked = false
                 if (state.fullscreen.floatValue > 0.98f) state.extra.floatValue = 0f
-                state.animateTo(scope, 0f)
+                state.animateTo(scope, 0f, pinWidth = true)
             } else if (state.detailOpen) {
                 state.locked = true
-                state.animateTo(scope, 1f)
+                state.animateTo(scope, 1f, pinWidth = true)
             }
         },
     )
@@ -204,18 +204,17 @@ private fun SplitDivider(
                             val maxPx = MAX_LIST_FRACTION * total
                             val slop = viewConfiguration.touchSlop
                             fun finish() {
+                                // 手指已离开。回弹可以接着走，右栏立刻按当前宽度重排。
+                                state.releaseResize()
                                 if (committed) {
                                     if (state.motion == null && state.fullscreen.floatValue < 1f) {
                                         state.animateTo(scope, 1f)
-                                    } else if (state.motion == null) {
-                                        state.settle()
                                     }
                                     return
                                 }
                                 if (restoring && travel < slop) {
                                     state.locked = true
                                     if (state.fullscreen.floatValue < 1f) state.animateTo(scope, 1f)
-                                    else state.settle()
                                     return
                                 }
                                 if (restoring && state.fullscreen.floatValue > 0.01f && dragX < minPx) {
@@ -328,36 +327,53 @@ private class SplitDragState(
     var detailOpen: Boolean = false
     var motion: Job? = null
     private var motionToken = 0
+    private var fingerDown = false
 
-    /** 手指按下或打断上一段动画。右栏继续用上一次的宽度，直到 settle。 */
+    /** 手指按下分界线。右栏沿用按下前的宽度，直到松开。 */
     fun holdResize() {
+        fingerDown = true
         motionToken++
         motion?.cancel()
         motion = null
         resizing = true
     }
 
-    /** 分界线已经停住。取消未完成的动画，并允许右栏按当前宽度重排。 */
+    /** 手指离开屏幕。不取消回弹，只是立刻允许右栏重排。 */
+    fun releaseResize() {
+        fingerDown = false
+        resizing = false
+    }
+
+    /** 右栏关掉时停掉动画，并结束冻结。 */
     fun settle() {
+        fingerDown = false
         motionToken++
         motion?.cancel()
         motion = null
         resizing = false
     }
 
-    private fun launchMotion(scope: CoroutineScope, block: suspend () -> Unit) {
+    private fun launchMotion(
+        scope: CoroutineScope,
+        pinWidth: Boolean,
+        block: suspend () -> Unit,
+    ) {
         motionToken++
         val token = motionToken
         motion?.cancel()
         motion = null
-        resizing = true
+        // 只有点全屏按钮这种没有按住分界线的动画才自己冻结宽度。
+        // 手指拖动时的回弹不冻结，松开就已经重排。
+        if (pinWidth && !fingerDown) resizing = true
         motion = scope.launch {
             try {
                 block()
             } finally {
-                if (token == motionToken) {
+                if (token == motionToken && pinWidth && !fingerDown) {
                     motion = null
                     resizing = false
+                } else if (token == motionToken) {
+                    motion = null
                 }
             }
         }
@@ -377,9 +393,9 @@ private class SplitDragState(
     }
 
     /** 0 是正常分栏，1 是正文铺满、分界线贴在屏幕左缘。 */
-    fun animateTo(scope: CoroutineScope, target: Float) {
+    fun animateTo(scope: CoroutineScope, target: Float, pinWidth: Boolean = false) {
         val start = fullscreen.floatValue
-        launchMotion(scope) {
+        launchMotion(scope, pinWidth) {
             Animatable(start).animateTo(target.coerceIn(0f, 1f), SplitSpring) {
                 fullscreen.floatValue = value.coerceIn(0f, 1f)
             }
@@ -406,10 +422,9 @@ private class SplitDragState(
         val start = extra.floatValue
         if (abs(start) < 0.5f) {
             extra.floatValue = 0f
-            settle()
             return
         }
-        launchMotion(scope) {
+        launchMotion(scope, pinWidth = false) {
             Animatable(start).animateTo(0f, SplitSpring) {
                 extra.floatValue = value
             }
