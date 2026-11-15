@@ -34,7 +34,9 @@ import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.SecretStore
 import com.ainscel.ainsmail.ui.account.AccountLoginLayer
 import com.ainscel.ainsmail.ui.account.AccountLoginViewModel
+import com.ainscel.ainsmail.data.mail.FirstSyncOutcome
 import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
+import com.ainscel.ainsmail.ui.mailbox.MailboxSyncHint
 import com.ainscel.ainsmail.ui.mailbox.MailboxViewModel
 import com.ainscel.ainsmail.ui.shell.AccountOverlay
 import com.ainscel.ainsmail.ui.shell.OverlayController
@@ -56,8 +58,17 @@ fun MailApp(modifier: Modifier = Modifier) {
             mails = sampleMails(System.currentTimeMillis()),
             catalog = sampleCatalog(),
             book = book,
-            mailStore = mailStore,
-            firstSync = firstSync,
+            observeMails = mailStore::observeMails,
+            syncAccounts = { ids ->
+                firstSync.syncAll(ids).mapNotNull { outcome ->
+                    when (outcome) {
+                        FirstSyncOutcome.Ok -> null
+                        is FirstSyncOutcome.NeedsReauth -> MailboxSyncHint.NeedsReauth(outcome.accountId)
+                        is FirstSyncOutcome.Failed -> MailboxSyncHint.Failed
+                    }
+                }
+            },
+            persistMails = mailStore::persistLocalMails,
             io = Dispatchers.IO,
         )
     }

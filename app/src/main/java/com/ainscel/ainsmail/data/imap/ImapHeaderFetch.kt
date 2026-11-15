@@ -1,24 +1,37 @@
 package com.ainscel.ainsmail.data.imap
 
-import com.ainscel.ainsmail.data.mail.MailHeaderEntity
-import com.ainscel.ainsmail.data.mail.mailId
-import com.ainscel.ainsmail.model.RemoteFolder
 import jakarta.mail.FetchProfile
 import jakarta.mail.Flags
 import jakarta.mail.Folder
 import jakarta.mail.Message
+import jakarta.mail.Store
 import jakarta.mail.UIDFolder
 import jakarta.mail.internet.InternetAddress
 import jakarta.mail.search.AndTerm
 import jakarta.mail.search.ComparisonTerm
+import jakarta.mail.search.OrTerm
 import jakarta.mail.search.ReceivedDateTerm
 import jakarta.mail.search.SentDateTerm
 import java.util.Date
 import org.eclipse.angus.mail.imap.IMAPFolder
 
+/** IMAP 信封。不含账号、板块和本机标记，落库时再套上。 */
+data class RemoteHeader(
+    val uid: Long,
+    val uidValidity: Long,
+    val fromName: String,
+    val fromAddress: String,
+    val toCsv: String,
+    val ccCsv: String,
+    val subject: String,
+    val timeMillis: Long,
+    val unread: Boolean,
+    val hasAttachment: Boolean,
+)
+
 data class FetchedHeaders(
     val uidValidity: Long,
-    val headers: List<MailHeaderEntity>,
+    val headers: List<RemoteHeader>,
 )
 
 /**
@@ -26,9 +39,7 @@ data class FetchedHeaders(
  * [limit] 非空时从新到旧截断。
  */
 fun fetchHeadersSince(
-    store: jakarta.mail.Store,
-    accountId: String,
-    folder: RemoteFolder,
+    store: Store,
     folderPath: String,
     sinceEpochMs: Long,
     untilEpochMs: Long? = null,
@@ -43,15 +54,18 @@ fun fetchHeadersSince(
         val uidValidity = (mailFolder as? UIDFolder)?.uidValidity ?: 0L
         val since = Date(sinceEpochMs)
         val until = untilEpochMs?.let { Date(it) }
-        val receivedSince = ReceivedDateTerm(ComparisonTerm.GE, since)
-        val sentSince = SentDateTerm(ComparisonTerm.GE, since)
-        val sinceTerm = jakarta.mail.search.OrTerm(receivedSince, sentSince)
+        val sinceTerm = OrTerm(
+            ReceivedDateTerm(ComparisonTerm.GE, since),
+            SentDateTerm(ComparisonTerm.GE, since),
+        )
         val term = if (until == null) {
             sinceTerm
         } else {
-            val receivedUntil = ReceivedDateTerm(ComparisonTerm.LE, until)
-            val sentUntil = SentDateTerm(ComparisonTerm.LE, until)
-            AndTerm(sinceTerm, jakarta.mail.search.OrTerm(receivedUntil, sentUntil))
+            val untilTerm = OrTerm(
+                ReceivedDateTerm(ComparisonTerm.LE, until),
+                SentDateTerm(ComparisonTerm.LE, until),
+            )
+            AndTerm(sinceTerm, untilTerm)
         }
         val found = mailFolder.search(term)
         if (found.isNotEmpty()) {
@@ -63,15 +77,14 @@ fun fetchHeadersSince(
             }
             mailFolder.fetch(found, profile)
         }
-        var messages = found.sortedByDescending { messageTime(it) }
-        if (limit != null && messages.size > limit) {
-            messages = messages.take(limit)
+        val messages = found.sortedByDescending { messageTime(it) }.let { sorted ->
+            if (limit != null && sorted.size > limit) sorted.take(limit) else sorted
         }
         val uidFolder = mailFolder as? UIDFolder
         val headers = messages.mapNotNull { message ->
             val uid = uidFolder?.getUID(message) ?: return@mapNotNull null
             if (uid <= 0L) return@mapNotNull null
-            toEntity(accountId, folder, uid, uidValidity, message)
+            toHeader(uid, uidValidity, message)
         }
         return FetchedHeaders(uidValidity = uidValidity, headers = headers)
     } finally {
@@ -79,29 +92,9 @@ fun fetchHeadersSince(
     }
 }
 
-fun readUidValidity(store: jakarta.mail.Store, folderPath: String): Long {
-    val mailFolder = store.getFolder(folderPath)
-    if (!mailFolder.exists()) return 0L
-    mailFolder.open(Folder.READ_ONLY)
-    return try {
-        (mailFolder as? UIDFolder)?.uidValidity ?: 0L
-    } finally {
-        if (mailFolder.isOpen) mailFolder.close(false)
-    }
-}
-
-private fun toEntity(
-    accountId: String,
-    folder: RemoteFolder,
-    uid: Long,
-    uidValidity: Long,
-    message: Message,
-): MailHeaderEntity {
+private fun toHeader(uid: Long, uidValidity: Long, message: Message): RemoteHeader {
     val from = firstAddress(message.from)
-    return MailHeaderEntity(
-        id = mailId(accountId, folder, uid),
-        accountId = accountId,
-        remoteFolder = folder.name,
+    return RemoteHeader(
         uid = uid,
         uidValidity = uidValidity,
         fromName = from?.personal?.trim().orEmpty().ifBlank {
@@ -114,7 +107,6 @@ private fun toEntity(
         timeMillis = messageTime(message),
         unread = !message.isSet(Flags.Flag.SEEN),
         hasAttachment = messageHasAttachment(message),
-        archived = false,
     )
 }
 

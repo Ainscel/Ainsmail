@@ -1,10 +1,12 @@
 package com.ainscel.ainsmail.data.mail
 
 import android.util.Log
+import com.ainscel.ainsmail.data.imap.FetchedHeaders
 import com.ainscel.ainsmail.data.imap.ImapConnectResult
 import com.ainscel.ainsmail.data.imap.fetchHeadersSince
 import com.ainscel.ainsmail.data.imap.openImapStore
 import com.ainscel.ainsmail.data.imap.resolveRemoteFolders
+import com.ainscel.ainsmail.model.RemoteFolder
 import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.ProviderCredentials
 import jakarta.mail.Store
@@ -70,25 +72,10 @@ class MailFirstSync(
                 if (cursor?.recentSyncDone == true) continue
                 val fetched = fetchHeadersSince(
                     store = imap,
-                    accountId = accountId,
-                    folder = folder,
                     folderPath = path,
                     sinceEpochMs = recentStart,
-                    untilEpochMs = null,
                 )
-                store.upsertHeaders(fetched.headers)
-                val highest = fetched.headers.maxOfOrNull { it.uid } ?: cursor?.highestUid ?: 0L
-                store.upsertCursor(
-                    FolderSyncCursorEntity(
-                        accountId = accountId,
-                        remoteFolder = folder.name,
-                        folderPath = path,
-                        uidValidity = fetched.uidValidity,
-                        highestUid = highest,
-                        recentSyncDone = true,
-                        historySyncDone = false,
-                    ),
-                )
+                saveFetched(accountId, folder, path, fetched, cursor, recentDone = true, historyDone = false)
             }
             // 存档不是服务器夹，不拉。
             FirstSyncOutcome.Ok
@@ -112,35 +99,48 @@ class MailFirstSync(
                 if (cursor?.historySyncDone == true) continue
                 val fetched = fetchHeadersSince(
                     store = imap,
-                    accountId = accountId,
-                    folder = folder,
                     folderPath = path,
                     sinceEpochMs = historyStart,
                     untilEpochMs = recentStart - 1,
                     limit = remaining,
                 )
-                store.upsertHeaders(fetched.headers)
+                saveFetched(
+                    accountId,
+                    folder,
+                    path,
+                    fetched,
+                    cursor,
+                    recentDone = cursor?.recentSyncDone == true,
+                    historyDone = true,
+                )
                 remaining -= fetched.headers.size
-                val highest = maxOf(
-                    cursor?.highestUid ?: 0L,
-                    fetched.headers.maxOfOrNull { it.uid } ?: 0L,
-                )
-                store.upsertCursor(
-                    FolderSyncCursorEntity(
-                        accountId = accountId,
-                        remoteFolder = folder.name,
-                        folderPath = path,
-                        uidValidity = fetched.uidValidity.takeIf { it > 0 }
-                            ?: cursor?.uidValidity
-                            ?: 0L,
-                        highestUid = highest,
-                        recentSyncDone = cursor?.recentSyncDone == true,
-                        historySyncDone = true,
-                    ),
-                )
             }
             FirstSyncOutcome.Ok
         }
+    }
+
+    private suspend fun saveFetched(
+        accountId: String,
+        folder: RemoteFolder,
+        path: String,
+        fetched: FetchedHeaders,
+        cursor: FolderSyncCursorEntity?,
+        recentDone: Boolean,
+        historyDone: Boolean,
+    ) {
+        store.upsertHeaders(fetched.headers.map { it.toEntity(accountId, folder) })
+        val highest = maxOf(cursor?.highestUid ?: 0L, fetched.headers.maxOfOrNull { it.uid } ?: 0L)
+        store.upsertCursor(
+            FolderSyncCursorEntity(
+                accountId = accountId,
+                remoteFolder = folder.name,
+                folderPath = path,
+                uidValidity = fetched.uidValidity.takeIf { it > 0 } ?: cursor?.uidValidity ?: 0L,
+                highestUid = highest,
+                recentSyncDone = recentDone,
+                historySyncDone = historyDone,
+            ),
+        )
     }
 
     private suspend fun withStore(

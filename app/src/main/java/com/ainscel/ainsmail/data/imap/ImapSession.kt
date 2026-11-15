@@ -53,7 +53,6 @@ private fun createStore(oauth: Boolean): Store {
     props["mail.store.protocol"] = "imaps"
     props["mail.imaps.port"] = "993"
     props["mail.imaps.ssl.enable"] = "true"
-    props["mail.imaps.ssl.trust"] = "*"
     props["mail.imaps.connectiontimeout"] = "20000"
     props["mail.imaps.timeout"] = "60000"
     if (oauth) {

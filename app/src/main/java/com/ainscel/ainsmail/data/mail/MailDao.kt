@@ -42,9 +42,6 @@ interface MailDao {
         tagNamesCsv: String,
     )
 
-    @Query("SELECT * FROM folder_sync_cursors WHERE accountId = :accountId")
-    suspend fun cursorsForAccount(accountId: String): List<FolderSyncCursorEntity>
-
     @Query(
         """
         SELECT * FROM folder_sync_cursors

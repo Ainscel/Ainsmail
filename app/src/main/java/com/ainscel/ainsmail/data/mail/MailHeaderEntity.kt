@@ -2,6 +2,7 @@ package com.ainscel.ainsmail.data.mail
 
 import androidx.room.Entity
 import androidx.room.Index
+import com.ainscel.ainsmail.data.imap.RemoteHeader
 import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.MailType
 import com.ainscel.ainsmail.model.RemoteFolder
@@ -55,6 +56,23 @@ data class FolderSyncCursorEntity(
 
 fun mailId(accountId: String, folder: RemoteFolder, uid: Long): String =
     "$accountId:${folder.name}:$uid"
+
+fun RemoteHeader.toEntity(accountId: String, folder: RemoteFolder): MailHeaderEntity = MailHeaderEntity(
+    id = mailId(accountId, folder, uid),
+    accountId = accountId,
+    remoteFolder = folder.name,
+    uid = uid,
+    uidValidity = uidValidity,
+    fromName = fromName,
+    fromAddress = fromAddress,
+    toCsv = toCsv,
+    ccCsv = ccCsv,
+    subject = subject,
+    timeMillis = timeMillis,
+    unread = unread,
+    hasAttachment = hasAttachment,
+    archived = false,
+)
 
 fun MailHeaderEntity.toMail(): Mail = Mail(
     id = id,

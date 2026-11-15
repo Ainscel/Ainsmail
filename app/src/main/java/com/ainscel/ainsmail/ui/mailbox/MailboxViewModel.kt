@@ -1,5 +1,6 @@
 package com.ainscel.ainsmail.ui.mailbox
 
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -7,33 +8,43 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.ainscel.ainsmail.data.mail.MailFirstSync
-import com.ainscel.ainsmail.data.mail.MailLocalStore
-import com.ainscel.ainsmail.data.mail.FirstSyncOutcome
 import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.TagCatalog
 import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.AccountDirectory
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+
+/** 首拉结果里界面需要知道的部分。凭证和异常原文留在数据层。 */
+sealed interface MailboxSyncHint {
+    data class NeedsReauth(val accountId: String) : MailboxSyncHint
+    data object Failed : MailboxSyncHint
+}
 
 /**
  * 没有保存过账号时用传入的样例。
  * 一旦加密文件里有账号，会话改成这些账号，邮件改订本地库 Flow，并触发首拉。
+ * 本类不引用数据库或 IMAP 类型；观察、同步、回写由组合根传入。
  */
 class MailboxViewModel(
     private val sampleAccounts: List<Account>,
     private val sampleMails: List<Mail>,
     catalog: TagCatalog,
     private val book: AccountBook,
-    private val mailStore: MailLocalStore,
-    private val firstSync: MailFirstSync,
+    private val observeMails: () -> Flow<List<Mail>>,
+    private val syncAccounts: suspend (List<String>) -> List<MailboxSyncHint>,
+    private val persistMails: suspend (List<Mail>) -> Unit,
     private val io: CoroutineDispatcher,
 ) : ViewModel() {
     private var showingSamples = true
+    private var syncedAccountIds: Set<String> = emptySet()
+    /** 已写库、库快照还没跟上的本机修改。避免 Flow 旧值把归档/已读冲掉。 */
+    private val pendingLocal = LinkedHashMap<String, Mail>()
     private var session = MailboxSession(
         accounts = sampleAccounts,
         mails = sampleMails,
@@ -67,7 +78,7 @@ class MailboxViewModel(
         session = outcome.session
         if (session != previous) {
             publish(previous)
-            persistIfNeeded(previous, session)
+            if (intent.writesLocalMail()) persistLocal(previous, session)
         }
         return outcome.tagResult
     }
@@ -96,36 +107,39 @@ class MailboxViewModel(
         if (saved.isEmpty()) {
             if (!showingSamples) {
                 showingSamples = true
+                syncedAccountIds = emptySet()
+                pendingLocal.clear()
                 stopRealMailPipeline()
                 onIntent(MailboxIntent.RestoreSamples(sampleAccounts, sampleMails))
             }
         } else if (showingSamples) {
             showingSamples = false
+            pendingLocal.clear()
             onIntent(MailboxIntent.UseRealAccounts(saved))
             startRealMailPipeline(saved.map { it.id })
         } else {
             onIntent(MailboxIntent.ReplaceAccounts(saved))
-            startRealMailPipeline(saved.map { it.id })
+            val ids = saved.map { it.id }
+            if (ids.toSet() != syncedAccountIds) startRealMailPipeline(ids)
         }
     }
 
     private fun startRealMailPipeline(accountIds: List<String>) {
+        syncedAccountIds = accountIds.toSet()
         if (observeJob == null) {
             observeJob = viewModelScope.launch {
-                mailStore.observeMails().collectLatest { mails ->
-                    onIntent(MailboxIntent.ReplaceMails(mails))
+                observeMails().collectLatest { mails ->
+                    onIntent(MailboxIntent.ReplaceMails(mergePending(mails)))
                 }
             }
         }
         syncJob?.cancel()
         syncJob = viewModelScope.launch {
-            val outcomes = firstSync.syncAll(accountIds)
-            outcomes.forEach { outcome ->
-                when (outcome) {
-                    FirstSyncOutcome.Ok -> Unit
-                    is FirstSyncOutcome.NeedsReauth ->
-                        onIntent(MailboxIntent.ReportNeedsReauth(outcome.accountId))
-                    is FirstSyncOutcome.Failed ->
+            syncAccounts(accountIds).forEach { hint ->
+                when (hint) {
+                    is MailboxSyncHint.NeedsReauth ->
+                        onIntent(MailboxIntent.ReportNeedsReauth(hint.accountId))
+                    MailboxSyncHint.Failed ->
                         onIntent(MailboxIntent.ReportSyncFailed)
                 }
             }
@@ -139,14 +153,36 @@ class MailboxViewModel(
         syncJob = null
     }
 
-    private fun persistIfNeeded(previous: MailboxSession, next: MailboxSession) {
-        if (showingSamples || previous.mails === next.mails || previous.mails == next.mails) return
-        val changed = next.mails.filter { mail ->
-            previous.mails.find { it.id == mail.id } != mail
-        }
+    private fun persistLocal(previous: MailboxSession, next: MailboxSession) {
+        if (showingSamples) return
+        val changed = next.mails.filter { mail -> previous.mails.find { it.id == mail.id } != mail }
         if (changed.isEmpty()) return
+        changed.forEach { pendingLocal[it.id] = it }
+        val snapshot = changed.toList()
         viewModelScope.launch(io) {
-            mailStore.persistLocalMails(changed)
+            try {
+                persistMails(snapshot)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w("AinsmailSync", "persist_local ${error.javaClass.simpleName}: ${error.message}")
+            }
+        }
+    }
+
+    /** 库行已经带上同样的本机标记时，丢掉挂起项；否则继续用挂起项盖住旧快照。 */
+    private fun mergePending(fromDb: List<Mail>): List<Mail> {
+        if (pendingLocal.isEmpty()) return fromDb
+        val ids = fromDb.map { it.id }.toSet()
+        pendingLocal.keys.retainAll(ids)
+        return fromDb.map { mail ->
+            val pending = pendingLocal[mail.id] ?: return@map mail
+            if (pending.sameLocalFlags(mail)) {
+                pendingLocal.remove(mail.id)
+                mail
+            } else {
+                pending
+            }
         }
     }
 
@@ -166,8 +202,9 @@ class MailboxViewModel(
             mails: List<Mail>,
             catalog: TagCatalog,
             book: AccountBook,
-            mailStore: MailLocalStore,
-            firstSync: MailFirstSync,
+            observeMails: () -> Flow<List<Mail>>,
+            syncAccounts: suspend (List<String>) -> List<MailboxSyncHint>,
+            persistMails: suspend (List<Mail>) -> Unit,
             io: CoroutineDispatcher,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
@@ -178,8 +215,9 @@ class MailboxViewModel(
                         mails,
                         catalog,
                         book,
-                        mailStore,
-                        firstSync,
+                        observeMails,
+                        syncAccounts,
+                        persistMails,
                         io,
                     ) as T
                 }
@@ -187,3 +225,23 @@ class MailboxViewModel(
         }
     }
 }
+
+private fun MailboxIntent.writesLocalMail(): Boolean = when (this) {
+    MailboxIntent.MarkVisibleRead,
+    MailboxIntent.DeleteSelected,
+    MailboxIntent.ArchiveSelected,
+    MailboxIntent.Undo,
+    -> true
+    is MailboxIntent.DeleteMail,
+    is MailboxIntent.SetType,
+    is MailboxIntent.AddTag,
+    -> true
+    else -> false
+}
+
+private fun Mail.sameLocalFlags(other: Mail): Boolean =
+    unread == other.unread &&
+        archived == other.archived &&
+        remoteFolder == other.remoteFolder &&
+        type == other.type &&
+        tagNames == other.tagNames

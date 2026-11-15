@@ -139,3 +139,14 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - `MailboxViewModel`：真账号后订 `MailLocalStore.observeMails()`，触发首拉；本机意图仍走归约并 `persistLocalMails`。
 - 单测：`FirstSyncPolicyTest`、`ReplaceMails` 归约。本机工程路径含「项目」，Windows 上 Gradle 测试进程 ClassNotFound（args 文件编码），`:app:compileDebugKotlin` 已通过；ASCII 路径下再跑测试。
 - 下一步：Task 2.2 增量 / IDLE / 已读回写。
+
+## 2026-11-16 06:10
+
+审阅并修好 Task 2.1。
+
+- Android Studio 报 KSP 2.3.4 `Plugin was not found`：该版插件标记只有 pom、没有 Gradle module。`settings.gradle.kts` 改为直接解析 `symbol-processing-gradle-plugin`，并加阿里云仓库作备用。
+- 去掉 `mail.imaps.ssl.trust=*`，改回系统信任库。
+- IMAP 只返回 `RemoteHeader`，Room 实体留在 `data/mail`。删掉未使用的 `readUidValidity` 和 `cursorsForAccount`。
+- `MailboxViewModel` 不再引用数据库 / IMAP 类型，观察、首拉、回写由 `MailApp` 传入。
+- 本机已读 / 归档先记挂起项，库快照跟上后再放开，避免旧 Flow 把操作冲掉；改显示名不再重连 IMAP。
+- `:app:compileDebugKotlin` 通过。
