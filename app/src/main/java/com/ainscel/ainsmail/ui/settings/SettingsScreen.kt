@@ -77,6 +77,16 @@ private fun EmptySettingsSection(
     }
 }
 
+/**
+ * 密钥可以长按粘贴。
+ * Password 键盘类型会关掉文字选区，系统的粘贴菜单不会出现。
+ * 隐藏字符仍由 PasswordVisualTransformation 负责。
+ */
+private val SecretKeyboard = KeyboardOptions(
+    keyboardType = KeyboardType.Ascii,
+    autoCorrectEnabled = false,
+)
+
 @Composable
 private fun SecretsSettings(
     store: SecretStore,
@@ -126,7 +136,7 @@ private fun SecretsSettings(
                     } else {
                         PasswordVisualTransformation()
                     },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    keyboardOptions = SecretKeyboard,
                     trailingIcon = {
                         TextButton(onClick = { revealKey = !revealKey }) {
                             Text(
@@ -166,7 +176,7 @@ private fun SecretsSettings(
                     } else {
                         PasswordVisualTransformation()
                     },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    keyboardOptions = SecretKeyboard,
                     trailingIcon = {
                         TextButton(onClick = { revealClientSecret = !revealClientSecret }) {
                             Text(
