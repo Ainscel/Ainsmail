@@ -1,9 +1,6 @@
 package com.ainscel.ainsmail.ui.account
 
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
@@ -25,11 +22,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.model.defaultDisplayName
+import com.ainscel.ainsmail.security.AccountError
 
 @Composable
 internal fun QqLoginDialog(
     saving: Boolean,
-    failure: LoginFailure?,
+    failure: AccountError?,
     onSubmit: (address: String, name: String, code: String, avatar: Uri?) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -39,9 +37,7 @@ internal fun QqLoginDialog(
     var code by rememberSaveable { mutableStateOf("") }
     var reveal by rememberSaveable { mutableStateOf(false) }
     var avatar by rememberSaveable { mutableStateOf<String?>(null) }
-    val picker = rememberLauncherForActivityResult(PickVisualMedia()) { uri ->
-        avatar = uri?.toString()
-    }
+    val pickAvatar = rememberAccountImagePicker { uri -> avatar = uri.toString() }
     AlertDialog(
         onDismissRequest = { if (!saving) onDismiss() },
         confirmButton = {
@@ -78,9 +74,7 @@ internal fun QqLoginDialog(
                 },
                 onCode = { code = it },
                 onToggleCode = { reveal = !reveal },
-                onPickAvatar = {
-                    picker.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly))
-                },
+                onPickAvatar = pickAvatar,
             )
         },
     )
@@ -93,7 +87,7 @@ private fun QqLoginFields(
     code: String,
     reveal: Boolean,
     avatarPicked: Boolean,
-    failure: LoginFailure?,
+    failure: AccountError?,
     onAddress: (String) -> Unit,
     onName: (String) -> Unit,
     onCode: (String) -> Unit,
@@ -139,7 +133,7 @@ private fun QqLoginFields(
             )
         }
         if (failure != null) {
-            Text(loginFailureText(failure))
+            Text(accountErrorText(failure))
         }
     }
 }

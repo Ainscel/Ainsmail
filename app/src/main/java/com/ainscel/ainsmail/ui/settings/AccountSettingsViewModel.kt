@@ -12,10 +12,10 @@ import androidx.lifecycle.viewModelScope
 import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.AccountDirectory
+import com.ainscel.ainsmail.security.AccountError
 import com.ainscel.ainsmail.security.AccountWrite
-import com.ainscel.ainsmail.ui.account.LoginFailure
-import com.ainscel.ainsmail.ui.account.readImage
-import com.ainscel.ainsmail.ui.account.toFailure
+import com.ainscel.ainsmail.security.readImageBytes
+import com.ainscel.ainsmail.security.toAccountError
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -26,7 +26,7 @@ data class AccountSettingsUiState(
     val loaded: Boolean = false,
     val unreadable: Boolean = false,
     val accounts: List<Account> = emptyList(),
-    val failure: LoginFailure? = null,
+    val failure: AccountError? = null,
 )
 
 class AccountSettingsViewModel(
@@ -63,7 +63,7 @@ class AccountSettingsViewModel(
     fun replaceAvatar(id: String, uri: Uri) {
         viewModelScope.launch {
             val written = withContext(io) {
-                val bytes = appContext.readImage(uri) ?: return@withContext AccountWrite.BadImage
+                val bytes = appContext.readImageBytes(uri) ?: return@withContext AccountWrite.BadImage
                 book.replaceAvatar(id, bytes)
             }
             publish(written)
@@ -81,7 +81,7 @@ class AccountSettingsViewModel(
         state = if (written is AccountWrite.Saved) {
             state.copy(failure = null)
         } else {
-            state.copy(failure = written.toFailure())
+            state.copy(failure = written.toAccountError())
         }
     }
 

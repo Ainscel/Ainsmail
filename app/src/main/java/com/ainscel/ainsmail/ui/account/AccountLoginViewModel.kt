@@ -13,43 +13,39 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ainscel.ainsmail.security.AccountBook
+import com.ainscel.ainsmail.security.AccountError
 import com.ainscel.ainsmail.security.AccountWrite
 import com.ainscel.ainsmail.security.GoogleAndroidLogin
 import com.ainscel.ainsmail.security.GoogleSignIn
-import com.ainscel.ainsmail.security.GoogleSignInFailure
 import com.ainscel.ainsmail.security.LoginLog
+import com.ainscel.ainsmail.security.readImageBytes
+import com.ainscel.ainsmail.security.toAccountError
+import com.ainscel.ainsmail.security.toGoogleSignInFailure
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.common.api.ApiException
-import com.google.android.gms.common.api.CommonStatusCodes
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+enum class LoginSheet {
+    None,
+    Providers,
+    Qq,
+}
+
 @Immutable
 data class LoginUiState(
+    val sheet: LoginSheet = LoginSheet.None,
     val gmailReady: Boolean = false,
     val saving: Boolean = false,
     val waitingForGoogle: Boolean = false,
     val authorizationRequest: IntentSenderRequest? = null,
-    val failure: LoginFailure? = null,
+    val failure: AccountError? = null,
     val failureTick: Long = 0,
     val savedTick: Long = 0,
 )
-
-enum class LoginFailure {
-    NotConfigured,
-    TimedOut,
-    Denied,
-    Rejected,
-    Duplicate,
-    InvalidAddress,
-    BlankCode,
-    BlankName,
-    Unreadable,
-    BadImage,
-}
 
 class AccountLoginViewModel(
     private val appContext: Context,
@@ -63,6 +59,19 @@ class AccountLoginViewModel(
     private var gmailJob: Job? = null
     private var gmailInFlight: Boolean = false
 
+    fun openProviders() {
+        state = state.copy(sheet = LoginSheet.Providers, failure = null)
+        refreshGmail()
+    }
+
+    fun openQq() {
+        state = state.copy(sheet = LoginSheet.Qq, failure = null)
+    }
+
+    fun dismissSheet() {
+        state = state.copy(sheet = LoginSheet.None, failure = null)
+    }
+
     fun refreshGmail() {
         viewModelScope.launch {
             val ready = withContext(io) { book.gmailReady() }
@@ -75,7 +84,7 @@ class AccountLoginViewModel(
         state = state.copy(saving = true, failure = null)
         viewModelScope.launch {
             val written = withContext(io) {
-                val bytes = avatar?.let { appContext.readImage(it) }
+                val bytes = avatar?.let { appContext.readImageBytes(it) }
                 if (avatar != null && bytes == null) {
                     AccountWrite.BadImage
                 } else {
@@ -83,9 +92,14 @@ class AccountLoginViewModel(
                 }
             }
             state = if (written is AccountWrite.Saved) {
-                state.copy(saving = false, failure = null, savedTick = state.savedTick + 1)
+                state.copy(
+                    sheet = LoginSheet.None,
+                    saving = false,
+                    failure = null,
+                    savedTick = state.savedTick + 1,
+                )
             } else {
-                val reason = written.toFailure()
+                val reason = written.toAccountError()
                 LoginLog.w("qq_save", "failed reason=$reason write=$written")
                 state.failed(reason)
             }
@@ -98,18 +112,23 @@ class AccountLoginViewModel(
             val ready = withContext(io) { book.gmailReady() }
             if (!ready) {
                 LoginLog.w("start_gmail", "client_not_configured")
-                state = state.failed(LoginFailure.NotConfigured)
+                state = state.failed(AccountError.NotConfigured)
                 return@launch
             }
             gmailInFlight = true
-            state = state.copy(waitingForGoogle = true, failure = null, authorizationRequest = null)
+            state = state.copy(
+                sheet = LoginSheet.None,
+                waitingForGoogle = true,
+                failure = null,
+                authorizationRequest = null,
+            )
             try {
                 val result = login.begin(activity)
                 if (result.hasResolution()) {
                     val pending = result.pendingIntent
                     if (pending == null) {
                         LoginLog.w("start_gmail", "hasResolution but pendingIntent null")
-                        fail(LoginFailure.Rejected)
+                        fail(AccountError.Rejected)
                         return@launch
                     }
                     state = state.copy(
@@ -122,7 +141,7 @@ class AccountLoginViewModel(
                 failApi("start_gmail_api", api)
             } catch (error: Exception) {
                 LoginLog.e("start_gmail", "${error.javaClass.simpleName}: ${error.message}", error)
-                fail(LoginFailure.Rejected)
+                fail(AccountError.Rejected)
             }
         }
     }
@@ -134,7 +153,7 @@ class AccountLoginViewModel(
     fun onAuthorizationResult(activity: Activity, activityResult: ActivityResult) {
         if (!gmailInFlight) {
             LoginLog.w("auth_result", "no in-flight login resultCode=${activityResult.resultCode}")
-            fail(LoginFailure.Rejected)
+            fail(AccountError.Rejected)
             return
         }
         gmailJob = viewModelScope.launch {
@@ -145,7 +164,7 @@ class AccountLoginViewModel(
                         "non_ok resultCode=${activityResult.resultCode} hasData=${activityResult.data != null}",
                     )
                     if (activityResult.data == null) {
-                        fail(LoginFailure.Denied)
+                        fail(AccountError.Denied)
                         return@launch
                     }
                 }
@@ -155,7 +174,7 @@ class AccountLoginViewModel(
                 failApi("auth_result_api", api)
             } catch (error: Exception) {
                 LoginLog.e("auth_result", "${error.javaClass.simpleName}: ${error.message}", error)
-                fail(LoginFailure.Rejected)
+                fail(AccountError.Rejected)
             }
         }
     }
@@ -173,7 +192,7 @@ class AccountLoginViewModel(
     private suspend fun finishGmail(result: AuthorizationResult) {
         when (val signed = login.complete(result)) {
             is GoogleSignIn.Failed -> {
-                val reason = signed.reason.toFailure()
+                val reason = signed.reason.toAccountError()
                 LoginLog.w("finish_gmail", "sign_in_failed google=${signed.reason} -> $reason")
                 fail(reason)
             }
@@ -194,21 +213,22 @@ class AccountLoginViewModel(
         gmailInFlight = false
         state = if (written is AccountWrite.Saved) {
             state.copy(
+                sheet = LoginSheet.None,
                 waitingForGoogle = false,
                 authorizationRequest = null,
                 failure = null,
                 savedTick = state.savedTick + 1,
             )
         } else {
-            val mapped = written.toFailure()
-            val reason = if (mapped == LoginFailure.BlankCode) LoginFailure.Rejected else mapped
+            val mapped = written.toAccountError()
+            val reason = if (mapped == AccountError.BlankCode) AccountError.Rejected else mapped
             LoginLog.w("gmail_save", "failed write=$written -> $reason")
             state.failed(reason)
         }
     }
 
     private fun failApi(step: String, api: ApiException) {
-        val reason = api.toLoginFailure()
+        val reason = api.toGoogleSignInFailure().toAccountError()
         LoginLog.e(
             step,
             "status=${api.statusCode} message=${api.status.statusMessage} -> $reason",
@@ -217,7 +237,7 @@ class AccountLoginViewModel(
         fail(reason)
     }
 
-    private fun fail(reason: LoginFailure) {
+    private fun fail(reason: AccountError) {
         gmailInFlight = false
         state = state.failed(reason)
     }
@@ -236,32 +256,10 @@ class AccountLoginViewModel(
     }
 }
 
-private fun LoginUiState.failed(reason: LoginFailure): LoginUiState = copy(
+private fun LoginUiState.failed(reason: AccountError): LoginUiState = copy(
     saving = false,
     waitingForGoogle = false,
     authorizationRequest = null,
     failure = reason,
     failureTick = failureTick + 1,
 )
-
-internal fun AccountWrite.toFailure(): LoginFailure = when (this) {
-    AccountWrite.Saved -> LoginFailure.Rejected
-    AccountWrite.Duplicate -> LoginFailure.Duplicate
-    AccountWrite.InvalidAddress -> LoginFailure.InvalidAddress
-    AccountWrite.BlankCode -> LoginFailure.BlankCode
-    AccountWrite.BlankName -> LoginFailure.BlankName
-    AccountWrite.Unreadable -> LoginFailure.Unreadable
-    AccountWrite.BadImage -> LoginFailure.BadImage
-}
-
-private fun GoogleSignInFailure.toFailure(): LoginFailure = when (this) {
-    GoogleSignInFailure.TimedOut -> LoginFailure.TimedOut
-    GoogleSignInFailure.Denied -> LoginFailure.Denied
-    GoogleSignInFailure.Rejected -> LoginFailure.Rejected
-}
-
-private fun ApiException.toLoginFailure(): LoginFailure = when (statusCode) {
-    CommonStatusCodes.CANCELED -> LoginFailure.Denied
-    CommonStatusCodes.TIMEOUT -> LoginFailure.TimedOut
-    else -> LoginFailure.Rejected
-}

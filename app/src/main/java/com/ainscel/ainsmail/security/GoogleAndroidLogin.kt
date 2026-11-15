@@ -108,7 +108,7 @@ class GoogleAndroidLogin(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (api: ApiException) {
-            val reason = api.toFailure()
+            val reason = api.toGoogleSignInFailure()
             LoginLog.e(
                 "complete_api",
                 "status=${api.statusCode} message=${api.status.statusMessage} -> $reason",
@@ -198,7 +198,8 @@ class GoogleAndroidLogin(
 
 private class AuthHttp : Exception()
 
-private fun ApiException.toFailure(): GoogleSignInFailure = when (statusCode) {
+/** Play / GMS 取消与超时统一映射；登录 VM 与 complete 共用。 */
+fun ApiException.toGoogleSignInFailure(): GoogleSignInFailure = when (statusCode) {
     CommonStatusCodes.CANCELED -> GoogleSignInFailure.Denied
     CommonStatusCodes.TIMEOUT -> GoogleSignInFailure.TimedOut
     else -> GoogleSignInFailure.Rejected

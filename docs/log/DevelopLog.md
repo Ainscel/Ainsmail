@@ -48,9 +48,9 @@
 - 改列表 / 正文 / 设置页：`ui/list/`、`ui/detail/`、`ui/settings/`
 - 领域枚举和模型：`model/`
 - 样例数据：`data/SampleMailbox.kt`
-- 已登录账号和凭证：`security/AccountBook.kt`、`security/SecretStore.kt`
+- 已登录账号和凭证：`security/AccountBook.kt`、`security/SecretStore.kt`、`security/ProviderCredentials.kt`
 
-当前进度的结构结论以 `docs/issues/框架审阅.md` 为准。已经定下来不做的事以 `docs/issues/框架问题.md` 为准。
+当前进度的结构结论以 `docs/issues/框架审阅.md` 为准。账号模块可维护性结论以 `docs/issues/账号审阅.md` 为准。已经定下来不做的事以 `docs/issues/框架问题.md` 为准。
 
 ---
 下一次更新在后面接续日志。
@@ -118,3 +118,11 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 授权请求只带四个范围，不再 offline access、不再换刷新令牌、不再传客户端 ID 给 Play。
 - 加密 schema 升到 3：Gmail 存 `accessToken` + 过期时间；去掉 `refreshToken`、设置里的 Web 客户端密钥与相关换令牌代码。
 - `AccountLoginViewModel` 去掉 `pendingClient` / `waitingForBrowser` 等回环时代命名；设置与隐私政策、需求文档同步。
+
+## 2026-11-16 03:50
+
+对 Task 1 账号模块做可维护性 / 可扩展性审阅，结论写入 `docs/issues/账号审阅.md`。
+
+总评：不是屎山；凭证边界与 `AccountBook` SSOT 可保留。要在收信前收口的雏形包括：同步层凭证出口、Gmail 令牌过期判定、设置反向依赖 `ui.account`、登录对话框状态堆在 `MailApp`、双 `SecretStore`、头像选择器重复、`AvatarScroller` 体积。
+
+本轮按审阅落地：`AccountError` / `readImage` 迁出 UI 包、登录步骤入 VM、共享 `SecretStore`、`ProviderCredentials` + `credentialsFor`、Gmail 过期判定、图片选择器与 `AvatarScroller` 抽取、合并 `ApiException` 映射。不建空 Repository。

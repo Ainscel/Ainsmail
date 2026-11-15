@@ -70,6 +70,33 @@ class AccountBook(
         return ready
     }
 
+    /**
+     * 给同步层取凭证。返回 null 表示没有这条账号或凭证为空。
+     * 不要放进 UI state。
+     */
+    fun credentialsFor(id: String): ProviderCredentials? = synchronized(lock) {
+        val record = records.find { it.id == id } ?: return null
+        when (record.provider) {
+            AccountRecord.PROVIDER_QQ -> {
+                val code = record.authCode.trim()
+                if (code.isEmpty()) null else ProviderCredentials.Qq(record.address, code)
+            }
+            AccountRecord.PROVIDER_GMAIL -> {
+                val token = record.accessToken.trim()
+                if (token.isEmpty()) {
+                    null
+                } else {
+                    ProviderCredentials.Gmail(
+                        address = record.address,
+                        accessToken = token,
+                        expiresAtEpochMs = record.accessTokenExpiresAtEpochMs,
+                    )
+                }
+            }
+            else -> null
+        }
+    }
+
     fun addQq(address: String, displayName: String, authCode: String, avatar: ByteArray?): AccountWrite {
         val email = qqAddress(address) ?: return AccountWrite.InvalidAddress
         val code = authCode.trim()

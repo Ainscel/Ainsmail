@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.security.AccountBook
+import com.ainscel.ainsmail.security.SecretStore
 import com.ainscel.ainsmail.ui.shell.SplitFullscreenButton
 import com.ainscel.ainsmail.ui.shell.LocalDetailHandlesBack
 import com.ainscel.ainsmail.ui.shell.MailCapsuleHeight
@@ -37,6 +38,7 @@ import com.ainscel.ainsmail.ui.shell.holdWidthUntilSettled
 fun SettingsSectionPane(
     section: SettingsSection,
     book: AccountBook,
+    secrets: SecretStore,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -58,8 +60,7 @@ fun SettingsSectionPane(
             )
         }
         SettingsSection.Secrets -> {
-            val context = LocalContext.current
-            val model = viewModel<SecretsViewModel>(factory = SecretsViewModel.factory(context))
+            val model = viewModel<SecretsViewModel>(factory = SecretsViewModel.factory(secrets))
             SecretsSettings(
                 state = model.state,
                 onEdit = model::onEdit,

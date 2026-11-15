@@ -7,6 +7,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ainscel.ainsmail.R
+import com.ainscel.ainsmail.security.AccountError
 
 @Composable
 internal fun ProviderLoginDialog(
@@ -54,15 +55,15 @@ internal fun GmailWaitDialog(onCancel: () -> Unit) {
 }
 
 @Composable
-internal fun loginFailureText(failure: LoginFailure): String = when (failure) {
-    LoginFailure.NotConfigured -> stringResource(R.string.account_gmail_need_client)
-    LoginFailure.TimedOut -> stringResource(R.string.account_gmail_timeout)
-    LoginFailure.Denied -> stringResource(R.string.account_gmail_denied)
-    LoginFailure.Rejected -> stringResource(R.string.account_gmail_rejected)
-    LoginFailure.Duplicate -> stringResource(R.string.account_duplicate)
-    LoginFailure.InvalidAddress -> stringResource(R.string.account_invalid_address)
-    LoginFailure.BlankCode -> stringResource(R.string.account_blank_code)
-    LoginFailure.BlankName -> stringResource(R.string.account_blank_name)
-    LoginFailure.Unreadable -> stringResource(R.string.settings_secrets_unreadable)
-    LoginFailure.BadImage -> stringResource(R.string.account_bad_image)
+internal fun accountErrorText(error: AccountError): String = when (error) {
+    AccountError.NotConfigured -> stringResource(R.string.account_gmail_need_client)
+    AccountError.TimedOut -> stringResource(R.string.account_gmail_timeout)
+    AccountError.Denied -> stringResource(R.string.account_gmail_denied)
+    AccountError.Rejected -> stringResource(R.string.account_gmail_rejected)
+    AccountError.Duplicate -> stringResource(R.string.account_duplicate)
+    AccountError.InvalidAddress -> stringResource(R.string.account_invalid_address)
+    AccountError.BlankCode -> stringResource(R.string.account_blank_code)
+    AccountError.BlankName -> stringResource(R.string.account_blank_name)
+    AccountError.Unreadable -> stringResource(R.string.settings_secrets_unreadable)
+    AccountError.BadImage -> stringResource(R.string.account_bad_image)
 }

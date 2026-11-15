@@ -10,26 +10,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.ainscel.ainsmail.R
 
-/** 登录新邮箱。新建聚合仍留在外层。 */
+/** 登录新邮箱。新建聚合仍留在外层。对话框步骤由 [AccountLoginViewModel] 持有。 */
 @Composable
 internal fun AccountLoginLayer(
     login: AccountLoginViewModel,
     snackbarHostState: SnackbarHostState,
-    showProviders: Boolean,
-    showQq: Boolean,
-    onDismissProviders: () -> Unit,
-    onOpenQq: () -> Unit,
-    onDismissQq: () -> Unit,
 ) {
     val activity = LocalContext.current as Activity
     val authorizationLauncher = rememberLauncherForActivityResult(StartIntentSenderForResult()) { result ->
         login.onAuthorizationResult(activity, result)
     }
     val savedMessage = stringResource(R.string.account_saved)
-    val failureMessage = login.state.failure?.let { loginFailureText(it) }
-    LaunchedEffect(showProviders) {
-        if (showProviders) login.refreshGmail()
-    }
+    val failureMessage = login.state.failure?.let { accountErrorText(it) }
+    val sheet = login.state.sheet
     LaunchedEffect(login.state.authorizationRequest) {
         val request = login.state.authorizationRequest ?: return@LaunchedEffect
         login.onAuthorizationLaunched()
@@ -41,27 +34,24 @@ internal fun AccountLoginLayer(
     }
     LaunchedEffect(login.state.failureTick) {
         val message = failureMessage ?: return@LaunchedEffect
-        if (showQq) return@LaunchedEffect
+        if (sheet == LoginSheet.Qq) return@LaunchedEffect
         snackbarHostState.showSnackbar(message)
         login.consumeFailure()
     }
-    if (showProviders) {
+    if (sheet == LoginSheet.Providers) {
         ProviderLoginDialog(
             gmailReady = login.state.gmailReady,
-            onQq = onOpenQq,
-            onGmail = {
-                onDismissProviders()
-                login.startGmail(activity)
-            },
-            onDismiss = onDismissProviders,
+            onQq = login::openQq,
+            onGmail = { login.startGmail(activity) },
+            onDismiss = login::dismissSheet,
         )
     }
-    if (showQq) {
+    if (sheet == LoginSheet.Qq) {
         QqLoginDialog(
             saving = login.state.saving,
             failure = login.state.failure,
             onSubmit = login::addQq,
-            onDismiss = onDismissQq,
+            onDismiss = login::dismissSheet,
         )
     }
     if (login.state.waitingForGoogle) {

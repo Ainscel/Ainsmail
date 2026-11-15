@@ -1,9 +1,6 @@
 package com.ainscel.ainsmail.ui.settings
 
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,8 +22,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.model.Account
-import com.ainscel.ainsmail.ui.account.LoginFailure
-import com.ainscel.ainsmail.ui.account.loginFailureText
+import com.ainscel.ainsmail.ui.account.accountErrorText
+import com.ainscel.ainsmail.ui.account.rememberAccountImagePicker
 
 @Composable
 internal fun AccountSettings(
@@ -41,10 +38,10 @@ internal fun AccountSettings(
     var pendingAvatar by rememberSaveable { mutableStateOf<String?>(null) }
     var renaming by rememberSaveable { mutableStateOf<String?>(null) }
     var removing by rememberSaveable { mutableStateOf<String?>(null) }
-    val picker = rememberLauncherForActivityResult(PickVisualMedia()) { uri ->
+    val pickAvatar = rememberAccountImagePicker { uri ->
         val id = pendingAvatar
         pendingAvatar = null
-        if (uri != null && id != null) onPickAvatar(id, uri)
+        if (id != null) onPickAvatar(id, uri)
     }
     SettingsSectionFrame(title = title, onBack = onBack, modifier = modifier) {
         AccountSettingsList(
@@ -52,7 +49,7 @@ internal fun AccountSettings(
             onRename = { renaming = it },
             onAvatar = {
                 pendingAvatar = it
-                picker.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly))
+                pickAvatar()
             },
             onRemove = { removing = it },
         )
@@ -112,7 +109,7 @@ private fun AccountSettingsList(
         }
         if (state.failure != null) {
             Text(
-                text = loginFailureText(state.failure),
+                text = accountErrorText(state.failure),
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 12.dp),
             )

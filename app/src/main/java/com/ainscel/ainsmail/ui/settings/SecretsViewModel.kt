@@ -1,6 +1,5 @@
 package com.ainscel.ainsmail.ui.settings
 
-import android.content.Context
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,12 +95,11 @@ class SecretsViewModel(
     }
 
     companion object {
-        fun factory(context: Context): ViewModelProvider.Factory {
-            val appContext = context.applicationContext
+        fun factory(store: SecretStore): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return SecretsViewModel(SecretStore(appContext), Dispatchers.IO) as T
+                    return SecretsViewModel(store, Dispatchers.IO) as T
                 }
             }
         }

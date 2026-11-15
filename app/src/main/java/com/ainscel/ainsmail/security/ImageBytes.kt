@@ -1,4 +1,4 @@
-package com.ainscel.ainsmail.ui.account
+package com.ainscel.ainsmail.security
 
 import android.content.Context
 import android.net.Uri
@@ -7,7 +7,7 @@ import java.io.ByteArrayOutputStream
 private const val MAX_IMAGE_BYTES = 20 * 1024 * 1024
 
 /** 在 IO 线程读取用户选中的图片。超过上限就放弃，避免把大图留在内存里。 */
-internal fun Context.readImage(uri: Uri): ByteArray? {
+fun Context.readImageBytes(uri: Uri): ByteArray? {
     val stream = contentResolver.openInputStream(uri) ?: return null
     return stream.use { input ->
         val output = ByteArrayOutputStream()
