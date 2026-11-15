@@ -120,3 +120,11 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 总评：不是屎山；凭证边界与 `AccountBook` SSOT 可保留。要在收信前收口的雏形包括：同步层凭证出口、Gmail 令牌过期判定、设置反向依赖 `ui.account`、登录对话框状态堆在 `MailApp`、双 `SecretStore`、头像选择器重复、`AvatarScroller` 体积。
 
 本轮按审阅落地：`AccountError` / `readImage` 迁出 UI 包、登录步骤入 VM、共享 `SecretStore`、`ProviderCredentials` + `credentialsFor`、Gmail 过期判定、图片选择器与 `AvatarScroller` 抽取、合并 `ApiException` 映射。不建空 Repository。
+
+## 2026-11-16 03:56
+
+重写 `DevelopTask.md` 第 2 项「收信与本地库」。
+
+- 原 Task 2 把首拉、增量、IDLE、已读回写、归档不变量平铺成一条，验收边界不清，且把分类 / 标签写成了本阶段交付。
+- 改为 **2.1 连通、落库与首拉**（IMAP 连通、板块映射、本地库信头与游标、7 天 / 30 天·50 封首拉、列表改订库 Flow）与 **2.2 增量、保活与本机状态**（UID 增量、IDLE / 15 分钟、当前范围刷新、已读回写、归档本机标记、不抢滑动主线程）。
+- 正文清洗仍归第 3 项，模型分类仍归第 4 项；本项只预留类型 / 标签字段。仍强调有真实来源再落库、不建空 Repository。
