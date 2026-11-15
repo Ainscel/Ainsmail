@@ -6,7 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.ainscel.mymail.security.SecretStore
 import com.ainscel.mymail.ui.nav.MailApp
-import com.ainscel.mymail.ui.theme.MyMailTheme
+import com.ainscel.mymail.ui.theme.AinsmailTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -14,7 +14,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val secretStore = SecretStore(this)
         setContent {
-            MyMailTheme {
+            AinsmailTheme {
                 MailApp(secretStore = secretStore)
             }
         }

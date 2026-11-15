@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 private val LightColors = lightColorScheme()
 
 @Composable
-fun MyMailTheme(content: @Composable () -> Unit) {
+fun AinsmailTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = LightColors,
         content = content,

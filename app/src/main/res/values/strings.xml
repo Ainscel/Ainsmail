@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">MyMail</string>
+    <string name="app_name">Ainsmail</string>
     <string name="open_settings">设置</string>
     <string name="folder_inbox">收件箱</string>
     <string name="folder_drafts">草稿</string>
