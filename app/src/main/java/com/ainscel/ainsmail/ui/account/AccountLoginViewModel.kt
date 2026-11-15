@@ -1,8 +1,11 @@
 package com.ainscel.ainsmail.ui.account
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -12,9 +15,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.AccountWrite
-import com.ainscel.ainsmail.security.GoogleLoopbackLogin
+import com.ainscel.ainsmail.security.GoogleAndroidLogin
+import com.ainscel.ainsmail.security.GoogleClient
 import com.ainscel.ainsmail.security.GoogleSignIn
 import com.ainscel.ainsmail.security.GoogleSignInFailure
+import com.google.android.gms.common.api.ApiException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,6 +31,7 @@ data class LoginUiState(
     val gmailReady: Boolean = false,
     val saving: Boolean = false,
     val waitingForBrowser: Boolean = false,
+    val authorizationRequest: IntentSenderRequest? = null,
     val failure: LoginFailure? = null,
     val failureTick: Long = 0,
     val savedTick: Long = 0,
@@ -47,13 +53,14 @@ enum class LoginFailure {
 class AccountLoginViewModel(
     private val appContext: Context,
     private val book: AccountBook,
-    private val login: GoogleLoopbackLogin,
+    private val login: GoogleAndroidLogin,
     private val io: CoroutineDispatcher,
 ) : ViewModel() {
     var state by mutableStateOf(LoginUiState())
         private set
 
     private var gmailJob: Job? = null
+    private var pendingClient: GoogleClient? = null
 
     fun refreshGmail() {
         viewModelScope.launch {
@@ -82,53 +89,108 @@ class AccountLoginViewModel(
         }
     }
 
-    fun startGmail() {
-        if (state.waitingForBrowser || state.saving) return
+    fun startGmail(activity: Activity) {
+        if (state.waitingForBrowser || state.saving || state.authorizationRequest != null) return
         gmailJob = viewModelScope.launch {
             val client = withContext(io) { book.googleClient() }
             if (client == null) {
                 state = state.failed(LoginFailure.NotConfigured)
                 return@launch
             }
-            state = state.copy(waitingForBrowser = true, failure = null)
-            val signed = login.signIn(client) { url ->
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                appContext.startActivity(intent)
+            pendingClient = client
+            state = state.copy(waitingForBrowser = true, failure = null, authorizationRequest = null)
+            try {
+                val result = login.begin(activity, client)
+                if (result.hasResolution()) {
+                    val pending = result.pendingIntent
+                        ?: return@launch fail(LoginFailure.Rejected)
+                    state = state.copy(
+                        authorizationRequest = IntentSenderRequest.Builder(pending).build(),
+                    )
+                } else {
+                    finishGmail(client, result)
+                }
+            } catch (api: ApiException) {
+                fail(api.toLoginFailure())
+            } catch (_: Exception) {
+                fail(LoginFailure.Rejected)
             }
-            if (!state.waitingForBrowser) return@launch
-            when (signed) {
-                is GoogleSignIn.Failed -> state = state.failed(signed.reason.toFailure())
-                is GoogleSignIn.Ok -> saveGmail(signed)
+        }
+    }
+
+    fun onAuthorizationLaunched() {
+        state = state.copy(authorizationRequest = null)
+    }
+
+    fun onAuthorizationResult(activity: Activity, activityResult: ActivityResult) {
+        val client = pendingClient
+        if (client == null) {
+            fail(LoginFailure.Rejected)
+            return
+        }
+        gmailJob = viewModelScope.launch {
+            try {
+                if (activityResult.resultCode != Activity.RESULT_OK) {
+                    fail(LoginFailure.Denied)
+                    return@launch
+                }
+                val result = login.resultFromIntent(activity, activityResult.data)
+                finishGmail(client, result)
+            } catch (api: ApiException) {
+                fail(api.toLoginFailure())
+            } catch (_: Exception) {
+                fail(LoginFailure.Rejected)
             }
         }
     }
 
     fun cancelGmail() {
         gmailJob?.cancel()
-        state = state.copy(waitingForBrowser = false)
+        pendingClient = null
+        state = state.copy(waitingForBrowser = false, authorizationRequest = null)
     }
 
     fun consumeFailure() {
         state = state.copy(failure = null)
     }
 
+    private suspend fun finishGmail(
+        client: GoogleClient,
+        result: com.google.android.gms.auth.api.identity.AuthorizationResult,
+    ) {
+        when (val signed = login.complete(client, result)) {
+            is GoogleSignIn.Failed -> fail(signed.reason.toFailure())
+            is GoogleSignIn.Ok -> saveGmail(signed)
+        }
+    }
+
     private suspend fun saveGmail(signed: GoogleSignIn.Ok) {
         val written = withContext(io) {
             book.addGmail(signed.email, signed.name, signed.refreshToken, signed.picture)
         }
+        pendingClient = null
         state = if (written is AccountWrite.Saved) {
-            state.copy(waitingForBrowser = false, failure = null, savedTick = state.savedTick + 1)
+            state.copy(
+                waitingForBrowser = false,
+                authorizationRequest = null,
+                failure = null,
+                savedTick = state.savedTick + 1,
+            )
         } else {
             val reason = written.toFailure()
             state.failed(if (reason == LoginFailure.BlankCode) LoginFailure.Rejected else reason)
         }
     }
 
+    private fun fail(reason: LoginFailure) {
+        pendingClient = null
+        state = state.failed(reason)
+    }
+
     companion object {
         fun factory(context: Context, book: AccountBook): ViewModelProvider.Factory {
             val appContext = context.applicationContext
-            val login = GoogleLoopbackLogin(Dispatchers.IO, Dispatchers.Main)
+            val login = GoogleAndroidLogin(Dispatchers.IO)
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -142,6 +204,7 @@ class AccountLoginViewModel(
 private fun LoginUiState.failed(reason: LoginFailure): LoginUiState = copy(
     saving = false,
     waitingForBrowser = false,
+    authorizationRequest = null,
     failure = reason,
     failureTick = failureTick + 1,
 )
@@ -160,4 +223,10 @@ private fun GoogleSignInFailure.toFailure(): LoginFailure = when (this) {
     GoogleSignInFailure.TimedOut -> LoginFailure.TimedOut
     GoogleSignInFailure.Denied -> LoginFailure.Denied
     GoogleSignInFailure.Rejected -> LoginFailure.Rejected
+}
+
+private fun ApiException.toLoginFailure(): LoginFailure = when (statusCode) {
+    com.google.android.gms.common.api.CommonStatusCodes.CANCELED -> LoginFailure.Denied
+    com.google.android.gms.common.api.CommonStatusCodes.TIMEOUT -> LoginFailure.TimedOut
+    else -> LoginFailure.Rejected
 }

@@ -21,6 +21,5 @@ fun mailboxAddress(raw: String): String? {
 fun defaultDisplayName(address: String): String =
     address.substringBefore('@').trim().ifBlank { address.trim() }
 
-/** 客户端 ID 和密钥都保存过才能添加 Gmail。只看已经写入的配置。 */
-fun gmailClientReady(clientId: String, clientSecret: String): Boolean =
-    clientId.isNotBlank() && clientSecret.isNotBlank()
+/** Android 客户端只需已保存的 Client ID。密钥不再作为添加 Gmail 的门槛。 */
+fun gmailClientReady(clientId: String): Boolean = clientId.isNotBlank()

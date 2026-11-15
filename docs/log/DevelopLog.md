@@ -78,3 +78,11 @@
 - 按现有产品写：无自有服务器；凭证用系统密钥库加密留在本机；Gmail 范围为 `openid`、`email`、`profile`、`https://mail.google.com/`；只有填写 DeepSeek 密钥后才把单封轻量正文发出去。
 - 单独写了 Google 用户数据的有限使用，供同意屏幕上的隐私政策链接使用。
 - 联系邮箱仍是占位，公开前需要换成真实邮箱。任务清单没有对应项，未改 `DevelopTask.md`。
+
+## 2026-11-16 02:30
+
+Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
+
+- 设置里以 Android 客户端 ID 为准；Web 客户端密钥改为可选，不再作为添加门槛。
+- 登录用 `AuthorizationClient`，授权完成后回到应用，不再监听 `127.0.0.1`。
+- 仍请求 offline access，用 server auth code 换刷新令牌；若公开客户端换令牌失败，可再填同项目 Web 客户端密钥。

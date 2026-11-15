@@ -21,10 +21,10 @@
 - [x] QQ / Foxmail：邮箱地址 + 授权码，说明授权码从哪来
 - [x] 显示名可改；QQ 默认可取邮箱 `@` 前一段
 - [x] QQ 从头像相册选图；没有图时用显示名纯色圆
-- [x] Gmail：客户端 ID 或密钥缺一项时不能添加
-- [x] Gmail：系统浏览器 + PKCE + 本机回环；范围含 openid、email、profile、`https://mail.google.com/`
+- [x] Gmail：客户端 ID 未保存时不能添加（Android 客户端；Web 密钥可选）
+- [x] Gmail：Play 授权回到应用；范围含 openid、email、profile、`https://mail.google.com/`
 - [x] 登录后保存头像，并拿到 IMAP / SMTP 用的刷新令牌
-- [x] 客户端 ID、密钥、刷新令牌、QQ 授权码进同一份加密文件，不写日志
+- [x] 客户端 ID、可选 Web 密钥、刷新令牌、QQ 授权码进同一份加密文件，不写日志
 - [x] 遮罩头像列改用已登录账号，不再只靠样例
 
 ## 2. 收信与本地库

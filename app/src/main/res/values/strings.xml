@@ -14,8 +14,8 @@
     <string name="account_add_login_pending">登录新邮箱还没接上</string>
     <string name="account_provider_qq">QQ / Foxmail</string>
     <string name="account_provider_gmail">Gmail</string>
-    <string name="account_gmail_need_client">请先在设置里保存 Google 客户端 ID 和密钥，两项都要有。</string>
-    <string name="account_gmail_waiting">正在用系统浏览器登录。完成后回到这里。</string>
+    <string name="account_gmail_need_client">请先在设置里保存 Google Android 客户端 ID。</string>
+    <string name="account_gmail_waiting">正在完成 Google 授权。请在弹出的界面里允许权限。</string>
     <string name="account_gmail_cancel">取消登录</string>
     <string name="account_gmail_timeout">登录超时，请再试一次。</string>
     <string name="account_gmail_denied">登录已取消。</string>
@@ -105,10 +105,10 @@
     <string name="settings_deepseek_model_hint">留空时使用 deepseek-flash。分类时关闭思考。</string>
     <string name="settings_google_section">Google 登录</string>
     <string name="settings_client_id">OAuth 客户端 ID</string>
-    <string name="settings_client_id_hint">一般以 .apps.googleusercontent.com 结尾</string>
-    <string name="settings_client_secret">OAuth 客户端密钥</string>
-    <string name="settings_client_secret_hint">桌面应用换令牌时必须带上。留在这台设备上，不要写入仓库。</string>
-    <string name="settings_google_help">在 Google Cloud 创建类型为「桌面应用」的客户端，同意屏幕发布为正式版。范围加上 openid、email、profile 和 https://mail.google.com/。登录时应用自己在 127.0.0.1 上监听，不用把端口写进云项目。换访问令牌和刷新令牌时会带上客户端密钥。不需要登记签名证书。授权页如果出现「未验证的应用」，确认后继续。ID 或密钥有一个没填时，不能添加 Gmail。</string>
+    <string name="settings_client_id_hint">Android 客户端，一般以 .apps.googleusercontent.com 结尾</string>
+    <string name="settings_client_secret_optional">Web 客户端密钥（可选）</string>
+    <string name="settings_client_secret_hint">Android 客户端没有密钥。只有换刷新令牌失败、且同项目另有 Web 客户端时才需要填。</string>
+    <string name="settings_google_help">在 Google Cloud 创建类型为「Android」的客户端。包名填 com.ainscel.ainsmail，并登记本安装包的 SHA-1 签名证书指纹。同意屏幕发布为正式版，范围加上 openid、email、profile 和 https://mail.google.com/。把 Android 客户端 ID 粘贴到上面。登录由系统授权界面完成，成功后会回到本应用。授权页如果出现「未验证的应用」，确认后继续。未填写客户端 ID 时，不能添加 Gmail。</string>
     <string name="settings_save">保存</string>
     <string name="settings_saved">已保存</string>
     <string name="settings_secrets_unreadable">密钥暂时读不出来，原来的文件还留着。</string>

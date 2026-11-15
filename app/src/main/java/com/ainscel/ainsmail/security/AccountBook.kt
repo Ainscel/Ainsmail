@@ -61,14 +61,13 @@ class AccountBook(
 
     fun gmailReady(): Boolean {
         val read = store.read()
-        return read is SecretRead.Ok &&
-            gmailClientReady(read.secrets.googleClientId, read.secrets.googleClientSecret)
+        return read is SecretRead.Ok && gmailClientReady(read.secrets.googleClientId)
     }
 
     fun googleClient(): GoogleClient? {
         val read = store.read() as? SecretRead.Ok ?: return null
         val secrets = read.secrets
-        if (!gmailClientReady(secrets.googleClientId, secrets.googleClientSecret)) return null
+        if (!gmailClientReady(secrets.googleClientId)) return null
         return GoogleClient(secrets.googleClientId, secrets.googleClientSecret)
     }
 

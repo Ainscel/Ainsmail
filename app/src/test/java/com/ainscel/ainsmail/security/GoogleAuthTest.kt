@@ -8,37 +8,23 @@ import org.junit.Test
 
 class GoogleAuthTest {
     @Test
-    fun challengeMatchesThePkceVector() {
-        val verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
-        assertEquals("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", codeChallenge(verifier))
-    }
-
-    @Test
-    fun authorizeUrlCarriesLoopbackPkceAndMailScope() {
-        val url = authorizeUrl(
-            clientId = "client",
-            redirectUri = redirectUri(4312),
-            state = "state-1",
-            verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
-        )
-        assertTrue(url.startsWith(GOOGLE_AUTHORIZE))
-        assertTrue(url.contains("redirect_uri=http%3A%2F%2F127.0.0.1%3A4312%2F"))
-        assertTrue(url.contains("code_challenge_method=S256"))
-        assertTrue(url.contains("access_type=offline"))
-        assertTrue(url.contains("prompt=consent"))
-        assertTrue(url.contains("https%3A%2F%2Fmail.google.com%2F"))
-        assertTrue(url.contains("openid"))
-    }
-
-    @Test
-    fun redirectRequiresTheExpectedState() {
-        val line = "GET /?code=abc&state=state-1 HTTP/1.1"
-        assertEquals("abc", (parseAuthRedirect(line, "state-1") as AuthRedirect.Code).value)
-        assertEquals(AuthRedirect.Invalid, parseAuthRedirect(line, "other"))
+    fun androidRedirectUriUsesReversedClientId() {
         assertEquals(
-            AuthRedirect.Denied,
-            parseAuthRedirect("GET /?error=access_denied&state=state-1 HTTP/1.1", "state-1"),
+            "com.googleusercontent.apps.123-abc:/oauth2redirect",
+            androidRedirectUri("123-abc.apps.googleusercontent.com"),
         )
+        assertNull(androidRedirectUri("not-a-google-client"))
+    }
+
+    @Test
+    fun serverAuthFormOmitsBlankSecret() {
+        val withoutSecret = serverAuthTokenForm("client", "", "code-1")
+        assertTrue(withoutSecret.contains("client_id=client"))
+        assertTrue(withoutSecret.contains("code=code-1"))
+        assertFalse(withoutSecret.contains("client_secret"))
+
+        val withSecret = serverAuthTokenForm("client", "sec", "code-1")
+        assertTrue(withSecret.contains("client_secret=sec"))
     }
 
     @Test

@@ -24,9 +24,9 @@ class AccountRulesTest {
     }
 
     @Test
-    fun gmailNeedsBothClientFields() {
-        assertFalse(gmailClientReady("", "secret"))
-        assertFalse(gmailClientReady("id", " "))
-        assertTrue(gmailClientReady("id", "secret"))
+    fun gmailNeedsClientIdOnly() {
+        assertFalse(gmailClientReady(""))
+        assertFalse(gmailClientReady(" "))
+        assertTrue(gmailClientReady("id.apps.googleusercontent.com"))
     }
 }

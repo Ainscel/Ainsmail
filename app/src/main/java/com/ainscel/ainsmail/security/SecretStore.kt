@@ -15,7 +15,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 /**
  * 用系统密钥库加密本地配置。
- * 全局的 DeepSeek 和 Google 客户端在 [Secrets]。
+ * 全局的 DeepSeek 和 Google Android 客户端 ID（以及可选的 Web 客户端密钥）在 [Secrets]。
  * 按账号的授权码和刷新令牌在同一份文件的另一段，不进 [Secrets]，也不写日志。
  */
 class SecretStore(context: Context) {

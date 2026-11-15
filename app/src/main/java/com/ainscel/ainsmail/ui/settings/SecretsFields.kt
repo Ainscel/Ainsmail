@@ -82,7 +82,7 @@ internal fun GoogleFields(
         value = state.clientSecret,
         onValueChange = { onEdit(SecretsEdit.ClientSecret(it)) },
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-        label = { Text(stringResource(R.string.settings_client_secret)) },
+        label = { Text(stringResource(R.string.settings_client_secret_optional)) },
         supportingText = { Text(stringResource(R.string.settings_client_secret_hint)) },
         singleLine = true,
         visualTransformation = if (state.revealClientSecret) {
