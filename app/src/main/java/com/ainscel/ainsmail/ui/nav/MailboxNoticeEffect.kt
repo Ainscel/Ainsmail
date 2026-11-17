@@ -10,7 +10,6 @@ import com.ainscel.ainsmail.ui.mailbox.Notice
 
 /** 本期还没有行为的入口。只在界面上说明，不进邮箱归约。 */
 enum class UnavailableKind {
-    Login,
     Group,
     OriginalLayout,
     Edit,
@@ -69,7 +68,6 @@ internal fun UnavailableHintEffect(
 
 @Composable
 private fun UnavailableHint.text(): String = when (kind) {
-    UnavailableKind.Login -> stringResource(R.string.account_add_login_pending)
     UnavailableKind.Group -> stringResource(R.string.account_add_group_pending)
     UnavailableKind.OriginalLayout -> stringResource(R.string.detail_original_pending)
     UnavailableKind.Edit -> stringResource(R.string.detail_edit_pending)

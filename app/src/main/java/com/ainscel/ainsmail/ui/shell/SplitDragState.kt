@@ -55,7 +55,7 @@ internal class SplitDragState(
     var resizing by mutableStateOf(false)
         private set
     var detailOpen: Boolean = false
-    var motion: Job? = null
+    private var motion: Job? = null
     private var motionToken = 0
     private var fingerDown = false
 
@@ -74,7 +74,7 @@ internal class SplitDragState(
         if (next != fullscreenActive) fullscreenActive = next
     }
 
-    /** 手指按下分界线。右栏沿用按下前的宽度，直到松开。 */
+    /** 手指按下分界线。右栏沿用按下前的宽度；全屏弹簧没停之前也不放开。 */
     fun holdResize() {
         fingerDown = true
         motionToken++
@@ -83,10 +83,23 @@ internal class SplitDragState(
         resizing = true
     }
 
-    /** 手指离开屏幕。不取消回弹，只是立刻允许右栏重排。 */
-    fun releaseResize() {
+    /**
+     * 手指离开。
+     * [fullscreenTarget] 有值时全屏进度还在动，右栏保持冻结；没有时立刻按当前栏宽重排，再把越界位移弹回。
+     */
+    fun onFingerUp(scope: CoroutineScope, fullscreenTarget: Float?) {
         fingerDown = false
-        resizing = false
+        if (fullscreenTarget != null) {
+            val pending = motion == null && abs(fullscreen.floatValue - fullscreenTarget) >= 0.001f
+            if (pending) {
+                animateTo(scope, fullscreenTarget)
+            } else if (motion == null) {
+                resizing = false
+            }
+            return
+        }
+        if (motion == null) resizing = false
+        springExtraHome(scope)
     }
 
     /** 右栏关掉时停掉动画，并结束冻结。 */
@@ -114,18 +127,17 @@ internal class SplitDragState(
         val token = motionToken
         motion?.cancel()
         motion = null
-        // 只有点全屏按钮这种没有按住分界线的动画才自己冻结宽度。
-        // 手指拖动时的回弹不冻结，松开就已经重排。
-        if (pinWidth && !fingerDown) resizing = true
+        // 全屏进度会改变两栏宽度，一开始就冻结。越界回弹不冻。
+        // 手指还按着时动画结束，冻结留给按下状态；手指已经离开才在结束时解开。
+        // holdResize 换了 token 之后，被取消的动画不能把冻结清掉。
+        if (pinWidth) resizing = true
         motion = scope.launch {
             try {
                 block()
-            } finally {
-                if (token == motionToken && pinWidth && !fingerDown) {
+            }             finally {
+                if (token == motionToken) {
                     motion = null
-                    resizing = false
-                } else if (token == motionToken) {
-                    motion = null
+                    if (pinWidth && !fingerDown) resizing = false
                 }
             }
         }
@@ -144,11 +156,11 @@ internal class SplitDragState(
         return ((basePx(total) + extra.floatValue) * (1f - progress)).coerceIn(0f, total)
     }
 
-    /** 0 是正常分栏，1 是正文铺满、分界线贴在屏幕左缘。 */
-    fun animateTo(scope: CoroutineScope, target: Float, pinWidth: Boolean = false) {
+    /** 0 是正常分栏，1 是正文铺满、分界线贴在屏幕左缘。动画结束前右栏不重排。 */
+    fun animateTo(scope: CoroutineScope, target: Float) {
         val start = fullscreen.floatValue
         val clamped = target.coerceIn(0f, 1f)
-        launchMotion(scope, pinWidth) {
+        launchMotion(scope, pinWidth = true) {
             Animatable(start).animateTo(clamped, SplitSpring) {
                 writeFullscreen(value)
             }

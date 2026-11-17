@@ -193,3 +193,11 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 手势把右栏收成全屏或从全屏拉回时，松手会立刻解除冻结，弹簧期间正文按每一帧宽度重排。点全屏按钮的路径会冻到动画结束。Task 3 / Task 5 之前应收口，这次只记录。
 - `MailDetailPane` 有未使用的 `LocalDetailHandlesBack`。`UnavailableKind.Login` 没有构造点。全屏图标和「在新窗口打开」各写了一份 `icon()`。账号遮罩和分栏机制同包，壳层还依赖 `AccountUi` 与 `security.resolveInside`。
 
+## 2026-11-18 04:10
+
+按壳层审查修了全屏弹簧的右栏冻结，并清掉死代码和重复图标。账号遮罩没有搬出 `ui.shell`。
+
+- `animateTo` 在全屏进度动画期间保持 `resizing`。手指离开时若弹簧还在走或即将开始，不再先解开。越界回弹仍松手就按当前栏宽重排。
+- 删掉 `MailDetailPane` 里未使用的返回读取、`UnavailableKind.Login` 和对应文案。矢量路径收成 `pathIcon`。
+- `SplitDragStateTest` 只断言同步的冻结状态。`:app:compileDebugKotlin` 通过。本机路径含「项目」时单元测试进程仍会 ClassNotFound。
+

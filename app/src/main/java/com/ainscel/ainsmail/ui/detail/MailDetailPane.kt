@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.ui.mailbox.MailDetailUi
 import com.ainscel.ainsmail.ui.shell.LocalDetailFullscreen
-import com.ainscel.ainsmail.ui.shell.LocalDetailHandlesBack
 import com.ainscel.ainsmail.ui.shell.MailCapsuleHeight
 import com.ainscel.ainsmail.ui.shell.MailChromeInset
 import com.ainscel.ainsmail.ui.shell.MailRoundButton
@@ -39,7 +38,6 @@ fun MailDetailPane(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val handlesBack = LocalDetailHandlesBack.current
     val fullscreen = LocalDetailFullscreen.current
     Box(modifier.fillMaxSize()) {
         if (detail == null) {

@@ -79,10 +79,10 @@ fun SplitLayout(
                 if (state.fullscreenActive) {
                     state.writeLocked(false)
                     if (state.fullscreen.floatValue > 0.98f) state.extra.floatValue = 0f
-                    state.animateTo(scope, 0f, pinWidth = true)
+                    state.animateTo(scope, 0f)
                 } else if (state.detailOpen) {
                     state.writeLocked(true)
-                    state.animateTo(scope, 1f, pinWidth = true)
+                    state.animateTo(scope, 1f)
                 }
             },
         )

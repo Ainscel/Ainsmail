@@ -11,7 +11,6 @@
     <string name="account_add">添加</string>
     <string name="account_add_login">登录新邮箱</string>
     <string name="account_add_group">新建聚合</string>
-    <string name="account_add_login_pending">登录新邮箱还没接上</string>
     <string name="account_provider_qq">QQ / Foxmail</string>
     <string name="account_provider_gmail">Gmail</string>
     <string name="account_gmail_need_client">请先在设置里保存 Google Android 客户端 ID。</string>

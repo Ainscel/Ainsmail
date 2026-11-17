@@ -81,26 +81,18 @@ private fun Modifier.splitDividerDrag(
     val maxPx = MaxListFraction * total
     val slop = viewConfiguration.touchSlop
     fun finish() {
-        // 手指已离开。回弹可以接着走，右栏立刻按当前宽度重排。
-        state.releaseResize()
-        if (committed) {
-            if (state.motion == null && state.fullscreen.floatValue < 1f) {
-                state.animateTo(scope, 1f)
-            }
-            return
+        // 全屏进度还在动时右栏保持冻结。越界回弹只动分界线，松手就按当前栏宽重排。
+        val target = when {
+            committed || (restoring && travel < slop) -> 1f
+            restoring && state.fullscreen.floatValue > 0.01f && dragX < minPx -> 0f
+            else -> null
         }
-        if (restoring && travel < slop) {
-            state.writeLocked(true)
-            if (state.fullscreen.floatValue < 1f) state.animateTo(scope, 1f)
-            return
-        }
-        if (restoring && state.fullscreen.floatValue > 0.01f && dragX < minPx) {
+        if (target == 1f && !committed) state.writeLocked(true)
+        if (target == 0f) {
             state.writeLocked(false)
             state.extra.floatValue = 0f
-            state.animateTo(scope, 0f)
-            return
         }
-        state.springExtraHome(scope)
+        state.onFingerUp(scope, target)
     }
     detectHorizontalDragGestures(
         onDragStart = { offset ->
