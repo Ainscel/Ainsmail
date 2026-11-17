@@ -2,7 +2,9 @@ package com.ainscel.ainsmail.data.imap
 
 import android.util.Log
 import com.ainscel.ainsmail.model.RemoteFolder
+import jakarta.mail.Folder
 import jakarta.mail.Store
+import org.eclipse.angus.mail.imap.IMAPFolder
 
 /**
  * 板块 → 服务器夹路径。
@@ -15,8 +17,6 @@ fun resolveRemoteFolders(store: Store): Map<RemoteFolder, String> {
 
     val listed = try {
         store.defaultFolder.list("*")
-    } catch (cancelled: kotlinx.coroutines.CancellationException) {
-        throw cancelled
     } catch (error: Exception) {
         Log.w("AinsmailSync", "list_folders ${error.javaClass.simpleName}: ${error.message}")
         emptyArray()
@@ -53,4 +53,13 @@ fun resolveRemoteFolders(store: Store): Map<RemoteFolder, String> {
         listOf("Trash", "Deleted Messages", "[Gmail]/Trash", "已删除", "删除", "垃圾箱"),
     )
     return result
+}
+
+/** 列出 SPECIAL-USE 时用；普通 Folder 没有 attributes 就当没有。 */
+internal fun folderSpecialUses(folder: Folder): Array<String> {
+    return try {
+        (folder as? IMAPFolder)?.attributes ?: emptyArray()
+    } catch (_: Exception) {
+        emptyArray()
+    }
 }

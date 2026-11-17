@@ -139,7 +139,7 @@ class MailboxViewModel(
         if (observeJob == null) {
             observeJob = viewModelScope.launch {
                 observeMails().collectLatest { mails ->
-                    onIntent(MailboxIntent.ReplaceMails(mergePending(mails)))
+                    onIntent(MailboxIntent.ReplaceMails(mergePending(pendingLocal, mails)))
                 }
             }
         }
@@ -176,22 +176,6 @@ class MailboxViewModel(
                 throw cancelled
             } catch (error: Exception) {
                 Log.w("AinsmailSync", "persist_local ${error.javaClass.simpleName}: ${error.message}")
-            }
-        }
-    }
-
-    /** 库行已经带上同样的本机标记时，丢掉挂起项；否则继续用挂起项盖住旧快照。 */
-    private fun mergePending(fromDb: List<Mail>): List<Mail> {
-        if (pendingLocal.isEmpty()) return fromDb
-        val ids = fromDb.map { it.id }.toSet()
-        pendingLocal.keys.retainAll(ids)
-        return fromDb.map { mail ->
-            val pending = pendingLocal[mail.id] ?: return@map mail
-            if (pending.sameLocalFlags(mail)) {
-                pendingLocal.remove(mail.id)
-                mail
-            } else {
-                pending
             }
         }
     }
@@ -238,23 +222,3 @@ class MailboxViewModel(
         }
     }
 }
-
-private fun MailboxIntent.writesLocalMail(): Boolean = when (this) {
-    MailboxIntent.MarkVisibleRead,
-    MailboxIntent.DeleteSelected,
-    MailboxIntent.ArchiveSelected,
-    MailboxIntent.Undo,
-    -> true
-    is MailboxIntent.DeleteMail,
-    is MailboxIntent.SetType,
-    is MailboxIntent.AddTag,
-    -> true
-    else -> false
-}
-
-private fun Mail.sameLocalFlags(other: Mail): Boolean =
-    unread == other.unread &&
-        archived == other.archived &&
-        remoteFolder == other.remoteFolder &&
-        type == other.type &&
-        tagNames == other.tagNames

@@ -22,6 +22,11 @@ sealed interface FirstSyncOutcome {
     data class Failed(val accountId: String, val reason: String) : FirstSyncOutcome
 }
 
+private data class WindowSync(
+    val outcome: FirstSyncOutcome,
+    val budgetExhausted: Boolean,
+)
+
 /**
  * 首次同步：先各夹最近 7 天信头，再按全局 50 封 / 30 天补历史。
  * 失败不清库。网络与解析都在 [io]。
@@ -39,84 +44,97 @@ class MailFirstSync(
             val now = System.currentTimeMillis()
             val recentStart = now - FIRST_SYNC_RECENT_DAYS * DAY_MS
             val historyStart = now - FIRST_SYNC_HISTORY_DAYS * DAY_MS
+            val recentOk = ArrayList<String>()
 
             for (accountId in accountIds) {
-                outcomes += syncAccountRecent(accountId, recentStart)
+                val recent = syncWindow(
+                    accountId = accountId,
+                    sinceEpochMs = recentStart,
+                    untilEpochMs = null,
+                    budget = null,
+                    alreadyDone = { it?.recentSyncDone == true },
+                    recentDone = { true },
+                    historyDone = { it?.historySyncDone == true },
+                )
+                outcomes += recent.outcome
+                if (recent.outcome is FirstSyncOutcome.Ok) recentOk += accountId
             }
 
-            val recentTotal = store.countAll()
-            if (!shouldFillHistory(recentCount = recentTotal, totalCount = recentTotal)) {
+            if (!shouldFillHistory(store.countAll())) {
+                store.markHistoryDone(recentOk)
                 return@withContext outcomes
             }
 
-            for (accountId in accountIds) {
+            val capped = ArrayList<String>()
+            for (accountId in recentOk) {
                 val budget = historyFillBudget(store.countAll())
-                if (budget <= 0) break
-                val history = syncAccountHistory(accountId, historyStart, recentStart, budget)
-                if (history != null) outcomes += history
+                if (budget <= 0) {
+                    capped += accountId
+                    continue
+                }
+                val history = syncWindow(
+                    accountId = accountId,
+                    sinceEpochMs = historyStart,
+                    untilEpochMs = recentStart - 1,
+                    budget = budget,
+                    alreadyDone = { it?.historySyncDone == true },
+                    recentDone = { it?.recentSyncDone == true },
+                    historyDone = { true },
+                )
+                outcomes += history.outcome
+                if (history.outcome is FirstSyncOutcome.Ok && history.budgetExhausted) {
+                    capped += accountId
+                }
             }
+            store.markHistoryDone(capped)
             outcomes
         }
     }
 
-    private suspend fun syncAccountRecent(
+    private suspend fun syncWindow(
         accountId: String,
-        recentStart: Long,
-    ): FirstSyncOutcome {
+        sinceEpochMs: Long,
+        untilEpochMs: Long?,
+        budget: Int?,
+        alreadyDone: (FolderSyncCursorEntity?) -> Boolean,
+        recentDone: (FolderSyncCursorEntity?) -> Boolean,
+        historyDone: (FolderSyncCursorEntity?) -> Boolean,
+    ): WindowSync {
         val credentials = book.credentialsFor(accountId)
-            ?: return FirstSyncOutcome.Failed(accountId, "missing_credentials")
-        return withStore(accountId, credentials) { imap ->
-            val folders = resolveRemoteFolders(imap)
-            for ((folder, path) in folders) {
-                val cursor = store.cursor(accountId, folder.name)
-                if (cursor?.recentSyncDone == true) continue
-                val fetched = fetchHeadersSince(
-                    store = imap,
-                    folderPath = path,
-                    sinceEpochMs = recentStart,
-                )
-                saveFetched(accountId, folder, path, fetched, cursor, recentDone = true, historyDone = false)
-            }
-            // 存档不是服务器夹，不拉。
-            FirstSyncOutcome.Ok
-        }
-    }
-
-    private suspend fun syncAccountHistory(
-        accountId: String,
-        historyStart: Long,
-        recentStart: Long,
-        budget: Int,
-    ): FirstSyncOutcome? {
-        if (budget <= 0) return null
-        val credentials = book.credentialsFor(accountId) ?: return null
-        return withStore(accountId, credentials) { imap ->
+            ?: return WindowSync(FirstSyncOutcome.Failed(accountId, "missing_credentials"), false)
+        var exhausted = false
+        val outcome = withStore(accountId, credentials) { imap ->
             val folders = resolveRemoteFolders(imap)
             var remaining = budget
             for ((folder, path) in folders) {
-                if (remaining <= 0) break
+                if (remaining != null && remaining <= 0) {
+                    exhausted = true
+                    break
+                }
                 val cursor = store.cursor(accountId, folder.name)
-                if (cursor?.historySyncDone == true) continue
+                if (alreadyDone(cursor)) continue
                 val fetched = fetchHeadersSince(
                     store = imap,
                     folderPath = path,
-                    sinceEpochMs = historyStart,
-                    untilEpochMs = recentStart - 1,
+                    sinceEpochMs = sinceEpochMs,
+                    untilEpochMs = untilEpochMs,
                     limit = remaining,
                 )
                 saveFetched(
-                    accountId,
-                    folder,
-                    path,
-                    fetched,
-                    cursor,
-                    recentDone = cursor?.recentSyncDone == true,
-                    historyDone = true,
+                    accountId = accountId,
+                    folder = folder,
+                    path = path,
+                    fetched = fetched,
+                    cursor = cursor,
+                    recentDone = recentDone(cursor),
+                    historyDone = historyDone(cursor),
                 )
-                remaining -= fetched.headers.size
+                if (remaining != null) remaining -= fetched.headers.size
             }
             FirstSyncOutcome.Ok
         }
+        if (outcome !is FirstSyncOutcome.Ok) exhausted = false
+        return WindowSync(outcome, exhausted)
     }
 
     private suspend fun saveFetched(
@@ -169,9 +187,19 @@ class MailFirstSync(
                         error.javaClass.simpleName + ": " + error.message.orEmpty().take(120),
                     )
                 } finally {
-                    runCatching { connected.store.close() }
+                    closeStore(accountId, connected.store)
                 }
             }
+        }
+    }
+
+    private fun closeStore(accountId: String, store: Store) {
+        try {
+            store.close()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "imap_close account=$accountId ${error.javaClass.simpleName}: ${error.message}")
         }
     }
 

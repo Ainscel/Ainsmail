@@ -1,28 +1,37 @@
 package com.ainscel.ainsmail.data.mail
 
+import com.ainscel.ainsmail.model.RemoteFolder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FirstSyncPolicyTest {
     @Test
-    fun recentBelowCap_allowsHistory() {
-        assertTrue(shouldFillHistory(recentCount = 20, totalCount = 20))
+    fun belowCap_allowsHistory() {
+        assertTrue(shouldFillHistory(totalCount = 20))
         assertEquals(30, historyFillBudget(totalCount = 20))
     }
 
     @Test
-    fun recentAlreadyAtCap_skipsHistory() {
-        assertFalse(shouldFillHistory(recentCount = 50, totalCount = 50))
-        assertFalse(shouldFillHistory(recentCount = 80, totalCount = 80))
+    fun atCap_skipsHistory() {
+        assertFalse(shouldFillHistory(totalCount = 50))
+        assertFalse(shouldFillHistory(totalCount = 80))
         assertEquals(0, historyFillBudget(totalCount = 50))
+    }
+}
+
+class MailHeaderMappingTest {
+    @Test
+    fun mailIdKeepsServerFolderBetweenColons() {
+        val id = mailId("11111111-1111-1111-1111-111111111111", RemoteFolder.Inbox, 5L)
+        assertEquals("Inbox", serverFolderInMailId(id))
     }
 
     @Test
-    fun totalAtCap_skipsEvenIfRecentSmall() {
-        // 理论上 7 天很少但库里已有别的数据时也不再补
-        assertFalse(shouldFillHistory(recentCount = 10, totalCount = 50))
-        assertEquals(0, historyFillBudget(totalCount = 50))
+    fun malformedIdHasNoServerFolder() {
+        assertNull(serverFolderInMailId("no-colons"))
+        assertNull(serverFolderInMailId("a:b"))
     }
 }

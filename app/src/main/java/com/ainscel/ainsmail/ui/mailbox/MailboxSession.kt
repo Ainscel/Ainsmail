@@ -13,6 +13,7 @@ import com.ainscel.ainsmail.model.TagCatalog
 data class MailPlacement(
     val remoteFolder: RemoteFolder,
     val archived: Boolean,
+    val locallyDeleted: Boolean,
 )
 
 data class UndoRecord(

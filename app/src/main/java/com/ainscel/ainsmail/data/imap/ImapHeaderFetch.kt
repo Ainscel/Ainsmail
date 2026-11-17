@@ -9,11 +9,8 @@ import jakarta.mail.UIDFolder
 import jakarta.mail.internet.InternetAddress
 import jakarta.mail.search.AndTerm
 import jakarta.mail.search.ComparisonTerm
-import jakarta.mail.search.OrTerm
 import jakarta.mail.search.ReceivedDateTerm
-import jakarta.mail.search.SentDateTerm
 import java.util.Date
-import org.eclipse.angus.mail.imap.IMAPFolder
 
 /** IMAP 信封。不含账号、板块和本机标记，落库时再套上。 */
 data class RemoteHeader(
@@ -26,6 +23,7 @@ data class RemoteHeader(
     val subject: String,
     val timeMillis: Long,
     val unread: Boolean,
+    /** 列表还没显示附件。首拉不取正文结构，这里保持 false。 */
     val hasAttachment: Boolean,
 )
 
@@ -35,8 +33,8 @@ data class FetchedHeaders(
 )
 
 /**
- * 按时间窗口拉信头。只取信封 / 标志 / UID，不下载正文。
- * [limit] 非空时从新到旧截断。
+ * 按收到日期拉信头。只取信封 / 标志 / UID，不下载正文。
+ * [limit] 非空时按 UID 从新到旧截断，只再取这几封的信封。
  */
 fun fetchHeadersSince(
     store: Store,
@@ -51,38 +49,26 @@ fun fetchHeadersSince(
     }
     mailFolder.open(Folder.READ_ONLY)
     try {
-        val uidValidity = (mailFolder as? UIDFolder)?.uidValidity ?: 0L
-        val since = Date(sinceEpochMs)
-        val until = untilEpochMs?.let { Date(it) }
-        val sinceTerm = OrTerm(
-            ReceivedDateTerm(ComparisonTerm.GE, since),
-            SentDateTerm(ComparisonTerm.GE, since),
-        )
-        val term = if (until == null) {
+        val uidFolder = mailFolder as? UIDFolder
+            ?: return FetchedHeaders(uidValidity = 0L, headers = emptyList())
+        val uidValidity = uidFolder.uidValidity
+        val sinceTerm = ReceivedDateTerm(ComparisonTerm.GE, Date(sinceEpochMs))
+        val term = if (untilEpochMs == null) {
             sinceTerm
         } else {
-            val untilTerm = OrTerm(
-                ReceivedDateTerm(ComparisonTerm.LE, until),
-                SentDateTerm(ComparisonTerm.LE, until),
-            )
-            AndTerm(sinceTerm, untilTerm)
+            AndTerm(sinceTerm, ReceivedDateTerm(ComparisonTerm.LE, Date(untilEpochMs)))
         }
         val found = mailFolder.search(term)
-        if (found.isNotEmpty()) {
-            val profile = FetchProfile().apply {
-                add(FetchProfile.Item.ENVELOPE)
-                add(FetchProfile.Item.FLAGS)
-                add(FetchProfile.Item.CONTENT_INFO)
-                add(UIDFolder.FetchProfileItem.UID)
-            }
-            mailFolder.fetch(found, profile)
+        if (found.isEmpty()) return FetchedHeaders(uidValidity = uidValidity, headers = emptyList())
+        val chosen = if (limit != null && found.size > limit) {
+            newestByUid(mailFolder, uidFolder, found, limit)
+        } else {
+            found
         }
-        val messages = found.sortedByDescending { messageTime(it) }.let { sorted ->
-            if (limit != null && sorted.size > limit) sorted.take(limit) else sorted
-        }
-        val uidFolder = mailFolder as? UIDFolder
-        val headers = messages.mapNotNull { message ->
-            val uid = uidFolder?.getUID(message) ?: return@mapNotNull null
+        if (chosen.isEmpty()) return FetchedHeaders(uidValidity = uidValidity, headers = emptyList())
+        mailFolder.fetch(chosen, envelopeProfile())
+        val headers = chosen.mapNotNull { message ->
+            val uid = uidFolder.getUID(message)
             if (uid <= 0L) return@mapNotNull null
             toHeader(uid, uidValidity, message)
         }
@@ -92,21 +78,42 @@ fun fetchHeadersSince(
     }
 }
 
+/** 先只取 UID，留下最新的 [limit] 封，避免把整个窗口的信封都下载下来。 */
+private fun newestByUid(
+    mailFolder: Folder,
+    uidFolder: UIDFolder,
+    found: Array<Message>,
+    limit: Int,
+): Array<Message> {
+    mailFolder.fetch(found, FetchProfile().apply { add(UIDFolder.FetchProfileItem.UID) })
+    return found.mapNotNull { message ->
+        val uid = uidFolder.getUID(message)
+        if (uid <= 0L) null else uid to message
+    }.sortedByDescending { it.first }
+        .take(limit)
+        .map { it.second }
+        .toTypedArray()
+}
+
+private fun envelopeProfile(): FetchProfile = FetchProfile().apply {
+    add(FetchProfile.Item.ENVELOPE)
+    add(FetchProfile.Item.FLAGS)
+    add(UIDFolder.FetchProfileItem.UID)
+}
+
 private fun toHeader(uid: Long, uidValidity: Long, message: Message): RemoteHeader {
     val from = firstAddress(message.from)
     return RemoteHeader(
         uid = uid,
         uidValidity = uidValidity,
-        fromName = from?.personal?.trim().orEmpty().ifBlank {
-            from?.address?.substringBefore('@').orEmpty()
-        },
+        fromName = from?.personal?.trim().orEmpty(),
         fromAddress = from?.address.orEmpty(),
         toCsv = addressCsv(message.getRecipients(Message.RecipientType.TO)),
         ccCsv = addressCsv(message.getRecipients(Message.RecipientType.CC)),
         subject = message.subject.orEmpty(),
         timeMillis = messageTime(message),
         unread = !message.isSet(Flags.Flag.SEEN),
-        hasAttachment = messageHasAttachment(message),
+        hasAttachment = false,
     )
 }
 
@@ -128,27 +135,4 @@ private fun addressCsv(addresses: Array<jakarta.mail.Address>?): String {
     return addresses.mapNotNull { address ->
         (address as? InternetAddress)?.address ?: address.toString().takeIf { it.isNotBlank() }
     }.joinToString(",")
-}
-
-/** 只看 Content-Type，不打开正文流，避免首拉把整封信拉下来。 */
-private fun messageHasAttachment(message: Message): Boolean {
-    return try {
-        val type = message.contentType?.lowercase().orEmpty()
-        "multipart/mixed" in type || "multipart/related" in type
-    } catch (cancelled: kotlinx.coroutines.CancellationException) {
-        throw cancelled
-    } catch (_: Exception) {
-        false
-    }
-}
-
-/** 列出 SPECIAL-USE 时用；普通 Folder 没有 attributes 就当没有。 */
-internal fun folderSpecialUses(folder: Folder): Array<String> {
-    return try {
-        (folder as? IMAPFolder)?.attributes ?: emptyArray()
-    } catch (cancelled: kotlinx.coroutines.CancellationException) {
-        throw cancelled
-    } catch (_: Exception) {
-        emptyArray()
-    }
 }

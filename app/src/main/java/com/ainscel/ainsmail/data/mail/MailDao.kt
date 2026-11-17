@@ -5,8 +5,15 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
-import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
+
+/** 本机回写只带这三列。类型和标签留给分类任务。 */
+data class LocalMailWrite(
+    val id: String,
+    val unread: Boolean,
+    val archived: Boolean,
+    val locallyDeleted: Boolean,
+)
 
 @Dao
 interface MailDao {
@@ -16,31 +23,96 @@ interface MailDao {
     @Query("SELECT COUNT(*) FROM mail_headers")
     suspend fun countAll(): Int
 
-    @Query("SELECT * FROM mail_headers WHERE id = :id LIMIT 1")
-    suspend fun findById(id: String): MailHeaderEntity?
+    @Query(
+        """
+        INSERT INTO mail_headers (
+            id, accountId, remoteFolder, uid, uidValidity,
+            fromName, fromAddress, toCsv, ccCsv, subject, timeMillis,
+            unread, hasAttachment, archived, locallyDeleted, typeName, tagNamesCsv
+        ) VALUES (
+            :id, :accountId, :remoteFolder, :uid, :uidValidity,
+            :fromName, :fromAddress, :toCsv, :ccCsv, :subject, :timeMillis,
+            :unread, :hasAttachment, :archived, :locallyDeleted, :typeName, :tagNamesCsv
+        )
+        ON CONFLICT(id) DO UPDATE SET
+            accountId = excluded.accountId,
+            remoteFolder = excluded.remoteFolder,
+            uid = excluded.uid,
+            uidValidity = excluded.uidValidity,
+            fromName = excluded.fromName,
+            fromAddress = excluded.fromAddress,
+            toCsv = excluded.toCsv,
+            ccCsv = excluded.ccCsv,
+            subject = excluded.subject,
+            timeMillis = excluded.timeMillis,
+            hasAttachment = excluded.hasAttachment
+        """,
+    )
+    suspend fun upsertEnvelope(
+        id: String,
+        accountId: String,
+        remoteFolder: String,
+        uid: Long,
+        uidValidity: Long,
+        fromName: String,
+        fromAddress: String,
+        toCsv: String,
+        ccCsv: String,
+        subject: String,
+        timeMillis: Long,
+        unread: Boolean,
+        hasAttachment: Boolean,
+        archived: Boolean,
+        locallyDeleted: Boolean,
+        typeName: String?,
+        tagNamesCsv: String,
+    )
 
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertIgnore(rows: List<MailHeaderEntity>): List<Long>
-
-    @Update
-    suspend fun update(rows: List<MailHeaderEntity>)
+    @Transaction
+    suspend fun upsertHeadersPreservingLocal(incoming: List<MailHeaderEntity>) {
+        for (row in incoming) {
+            upsertEnvelope(
+                id = row.id,
+                accountId = row.accountId,
+                remoteFolder = row.remoteFolder,
+                uid = row.uid,
+                uidValidity = row.uidValidity,
+                fromName = row.fromName,
+                fromAddress = row.fromAddress,
+                toCsv = row.toCsv,
+                ccCsv = row.ccCsv,
+                subject = row.subject,
+                timeMillis = row.timeMillis,
+                unread = row.unread,
+                hasAttachment = row.hasAttachment,
+                archived = row.archived,
+                locallyDeleted = row.locallyDeleted,
+                typeName = row.typeName,
+                tagNamesCsv = row.tagNamesCsv,
+            )
+        }
+    }
 
     @Query(
         """
         UPDATE mail_headers
-        SET unread = :unread, archived = :archived, remoteFolder = :remoteFolder,
-            typeName = :typeName, tagNamesCsv = :tagNamesCsv
+        SET unread = :unread, archived = :archived, locallyDeleted = :locallyDeleted
         WHERE id = :id
         """,
     )
-    suspend fun updateLocalFlags(
+    suspend fun updateOneLocalFlags(
         id: String,
         unread: Boolean,
         archived: Boolean,
-        remoteFolder: String,
-        typeName: String?,
-        tagNamesCsv: String,
+        locallyDeleted: Boolean,
     )
+
+    @Transaction
+    suspend fun updateLocalFlags(rows: List<LocalMailWrite>) {
+        for (row in rows) {
+            updateOneLocalFlags(row.id, row.unread, row.archived, row.locallyDeleted)
+        }
+    }
 
     @Query(
         """
@@ -54,23 +126,13 @@ interface MailDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCursor(cursor: FolderSyncCursorEntity)
 
-    @Transaction
-    suspend fun upsertHeadersPreservingLocal(incoming: List<MailHeaderEntity>) {
-        if (incoming.isEmpty()) return
-        val inserted = insertIgnore(incoming)
-        val toUpdate = ArrayList<MailHeaderEntity>()
-        incoming.forEachIndexed { index, row ->
-            if (inserted[index] == -1L) {
-                val existing = findById(row.id) ?: return@forEachIndexed
-                // 同步失败不得抹本地归档；已读本阶段以库内为准，新拉只补信封字段
-                toUpdate += row.copy(
-                    unread = existing.unread,
-                    archived = existing.archived,
-                    typeName = existing.typeName,
-                    tagNamesCsv = existing.tagNamesCsv,
-                )
-            }
-        }
-        if (toUpdate.isNotEmpty()) update(toUpdate)
-    }
+    /** 只标完成，不改最高 UID。没拉到的夹因此不会被当成还要补 30 天。 */
+    @Query(
+        """
+        UPDATE folder_sync_cursors
+        SET historySyncDone = 1
+        WHERE accountId IN (:accountIds) AND historySyncDone = 0
+        """,
+    )
+    suspend fun markHistoryDone(accountIds: List<String>)
 }

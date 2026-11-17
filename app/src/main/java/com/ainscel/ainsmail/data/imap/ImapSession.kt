@@ -36,8 +36,6 @@ fun openImapStore(credentials: ProviderCredentials): ImapConnectResult {
                 ImapConnectResult.Ok(store)
             }
         }
-    } catch (cancelled: kotlinx.coroutines.CancellationException) {
-        throw cancelled
     } catch (error: Exception) {
         val message = error.message.orEmpty()
         if (credentials is ProviderCredentials.Gmail && looksLikeAuthFailure(message)) {

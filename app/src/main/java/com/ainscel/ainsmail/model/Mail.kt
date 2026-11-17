@@ -67,6 +67,8 @@ data class Mail(
     val accountId: String,
     val remoteFolder: RemoteFolder,
     val archived: Boolean,
+    /** 本机删除。不改 [remoteFolder]，服务器夹要等真正写回再动。 */
+    val locallyDeleted: Boolean = false,
     val fromName: String,
     val subject: String,
     val preview: String,
@@ -84,9 +86,9 @@ fun Mail.inScope(scope: MailboxScope): Boolean = when (scope) {
 
 /** 存档板块只看收件箱里被本机归档的信。别的文件夹不因为这个标记改归属。 */
 fun Mail.inSection(section: Section): Boolean = when (section) {
-    Section.Inbox -> remoteFolder == RemoteFolder.Inbox && !archived
-    Section.Drafts -> remoteFolder == RemoteFolder.Drafts
-    Section.Archive -> remoteFolder == RemoteFolder.Inbox && archived
-    Section.Sent -> remoteFolder == RemoteFolder.Sent
-    Section.Trash -> remoteFolder == RemoteFolder.Trash
+    Section.Inbox -> remoteFolder == RemoteFolder.Inbox && !archived && !locallyDeleted
+    Section.Drafts -> remoteFolder == RemoteFolder.Drafts && !locallyDeleted
+    Section.Archive -> remoteFolder == RemoteFolder.Inbox && archived && !locallyDeleted
+    Section.Sent -> remoteFolder == RemoteFolder.Sent && !locallyDeleted
+    Section.Trash -> locallyDeleted || remoteFolder == RemoteFolder.Trash
 }

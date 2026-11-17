@@ -5,7 +5,6 @@ import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.MailType
 import com.ainscel.ainsmail.model.MailboxScope
 import com.ainscel.ainsmail.model.ReadFilter
-import com.ainscel.ainsmail.model.RemoteFolder
 import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.model.inScope
 import com.ainscel.ainsmail.model.inSection
@@ -171,7 +170,7 @@ private fun MailboxSession.setType(type: MailType): MailboxSession {
 
 private fun MailboxSession.delete(ids: Set<String>, noticeId: Long): MailboxSession {
     return relocate(ids, Notice.Deleted(noticeId)) { mail ->
-        mail.copy(remoteFolder = RemoteFolder.Trash, archived = false)
+        mail.copy(locallyDeleted = true, archived = false)
     }
 }
 
@@ -192,7 +191,7 @@ private fun MailboxSession.relocate(
         if (mail.id !in ids) {
             mail
         } else {
-            previous[mail.id] = MailPlacement(mail.remoteFolder, mail.archived)
+            previous[mail.id] = MailPlacement(mail.remoteFolder, mail.archived, mail.locallyDeleted)
             transform(mail)
         }
     }
@@ -208,7 +207,11 @@ private fun MailboxSession.restoreUndo(): MailboxSession {
     val record = undo ?: return this
     val restored = mails.map { mail ->
         val placement = record.placements[mail.id] ?: return@map mail
-        mail.copy(remoteFolder = placement.remoteFolder, archived = placement.archived)
+        mail.copy(
+            remoteFolder = placement.remoteFolder,
+            archived = placement.archived,
+            locallyDeleted = placement.locallyDeleted,
+        )
     }
     return copy(mails = restored, undo = null, notice = null)
 }

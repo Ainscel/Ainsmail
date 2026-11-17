@@ -137,13 +137,17 @@ class MailboxReducerTest {
         val session = session(mail("a", archived = true)).selecting("a")
         val deleted = reduce(session, MailboxIntent.DeleteSelected, 4L).session
         val moved = deleted.mail("a")
-        assertEquals(RemoteFolder.Trash, moved.remoteFolder)
+        assertEquals(RemoteFolder.Inbox, moved.remoteFolder)
+        assertEquals(true, moved.locallyDeleted)
         assertEquals(false, moved.archived)
+        assertEquals(emptySet<String>(), deleted.copy(section = Section.Inbox).mailsInSection().ids())
+        assertEquals(setOf("a"), deleted.copy(section = Section.Trash).mailsInSection().ids())
         assertEquals(Notice.Deleted(4L), deleted.notice)
 
         val arrived = deleted.copy(mails = deleted.mails + mail("new"))
         val restored = reduce(arrived, MailboxIntent.Undo, 5L).session
         assertEquals(RemoteFolder.Inbox, restored.mail("a").remoteFolder)
+        assertEquals(false, restored.mail("a").locallyDeleted)
         assertEquals(true, restored.mail("a").archived)
         assertEquals(RemoteFolder.Inbox, restored.mail("new").remoteFolder)
         assertNull(restored.undo)
