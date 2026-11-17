@@ -103,6 +103,7 @@ fun MailRow(
             MailRowTextBlock(
                 row = row,
                 nameWeight = nameWeight,
+                fadeBackground = background,
                 modifier = Modifier
                     .padding(start = 10.dp)
                     .weight(1f),
@@ -114,11 +115,13 @@ fun MailRow(
 /**
  * 三行正文：子项用与 actualWidth 无关的固定约束测量；
  * 仅在摆放阶段把标签/时间贴到当前右缘。
+ * [fadeBackground] 与这一行的底色相同，右缘淡出盖的就是它。
  */
 @Composable
 private fun MailRowTextBlock(
     row: MailRowUi,
     nameWeight: FontWeight,
+    fadeBackground: Color,
     modifier: Modifier = Modifier,
 ) {
     Layout(
@@ -126,7 +129,10 @@ private fun MailRowTextBlock(
             // [0] 发件人
             Text(
                 text = row.fromName,
-                modifier = Modifier.zeroReflowFadeText(fadeWidth = 24.dp),
+                modifier = Modifier.zeroReflowFadeText(
+                    background = fadeBackground,
+                    fadeWidth = 24.dp,
+                ),
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Clip,
@@ -162,6 +168,7 @@ private fun MailRowTextBlock(
             Text(
                 text = row.subject,
                 modifier = Modifier.zeroReflowFadeText(
+                    background = fadeBackground,
                     rightInset = SubjectFadeInset,
                     fadeWidth = MailTextFadeWidth,
                 ),
@@ -174,7 +181,10 @@ private fun MailRowTextBlock(
             // [3] 预览
             Text(
                 text = row.preview,
-                modifier = Modifier.zeroReflowFadeText(fadeWidth = 28.dp),
+                modifier = Modifier.zeroReflowFadeText(
+                    background = fadeBackground,
+                    fadeWidth = 28.dp,
+                ),
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Clip,

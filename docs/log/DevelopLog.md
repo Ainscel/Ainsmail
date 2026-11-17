@@ -228,3 +228,12 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 入口只在 `MainActivity` 叠了一层。删 `ui/debug/FrameJankOverlay.kt` 和这层调用即可去掉。
 - `:app:compileDebugKotlin` 通过。
 
+## 2026-11-18 06:50
+
+列表右缘淡出不再在拖分界线时重录字形。
+
+- 槽宽每帧都在变。原先每行文字用离屏层加 `DstIn`，宽度一变就按新尺寸重做缓冲，绘制要 6–13ms。
+- 文字仍按固定宽度测量，放进尺寸不变的绘制层。淡出改成槽位右缘的纯色渐变，颜色用这一行自己的底色；顶栏用界面的 surface。槽变窄只裁切。
+- 调用处只多传底色。测量锁和淡出画法都留在 `zeroReflowFadeText`。
+- `:app:compileDebugKotlin` 通过。
+
