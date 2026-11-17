@@ -185,3 +185,11 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 历史补齐先按 UID 截断，再取信封和标志。搜索只用收到日期。附件标记先不取。
 - 挂起合并抽到 `LocalMailOverlay`。`:app:compileDebugKotlin` 与单元测试源码编译通过。`testDebugUnitTest` 仍是工程路径含「项目」导致的 ClassNotFound，测试没有真正跑起来。
 
+## 2026-11-18 03:52
+
+审阅 Task 0 壳层（`ui/shell`、`ui/nav`、`ui/detail`），结论写入 `docs/issues/审阅记录.md`。未改业务代码。
+
+- 分栏、越界阻力和遮罩开合按布局 / 绘制阶段读状态，没有按每一帧重组。没有 P0。
+- 手势把右栏收成全屏或从全屏拉回时，松手会立刻解除冻结，弹簧期间正文按每一帧宽度重排。点全屏按钮的路径会冻到动画结束。Task 3 / Task 5 之前应收口，这次只记录。
+- `MailDetailPane` 有未使用的 `LocalDetailHandlesBack`。`UnavailableKind.Login` 没有构造点。全屏图标和「在新窗口打开」各写了一份 `icon()`。账号遮罩和分栏机制同包，壳层还依赖 `AccountUi` 与 `security.resolveInside`。
+
