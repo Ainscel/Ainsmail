@@ -21,8 +21,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.ui.mailbox.AccountUi
+
+/** 侧栏账号圆的尺寸。列表角标按这个比例缩小，字和圆的关系保持一致。 */
+internal val AccountAvatarSize = 48.dp
+internal val AccountAvatarInset = 3.dp
+internal val AccountAvatarFont = 14.sp
+
+internal fun scaledAvatarFont(diameter: Dp): TextUnit =
+    (AccountAvatarFont.value * diameter.value / AccountAvatarSize.value).sp
+
+internal fun scaledAvatarInset(diameter: Dp): Dp =
+    AccountAvatarInset * (diameter.value / AccountAvatarSize.value)
 
 @Composable
 internal fun AvatarColumn(
@@ -88,9 +101,9 @@ internal fun CircleButton(
     }
     Box(
         modifier
-            .size(48.dp)
+            .size(AccountAvatarSize)
             .then(ring)
-            .padding(3.dp)
+            .padding(AccountAvatarInset)
             .clip(CircleShape)
             .background(container)
             .clickable(onClick = onClick),

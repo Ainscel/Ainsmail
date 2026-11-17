@@ -173,6 +173,7 @@ private fun toRow(
         senderHue = avatarHue(mail.fromName),
         accountLabel = account?.let { avatarLabel(it.name) }.orEmpty(),
         accountHue = account?.let { avatarHue(it.name) } ?: 0f,
+        accountAvatar = if (showAccount) account?.avatarFile else null,
         tags = mail.tagNames.asReversed().map { name ->
             TagChipUi(name, session.catalog.poolOf(name) ?: TagPool.Pending)
         },

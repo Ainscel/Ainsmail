@@ -1,8 +1,10 @@
 package com.ainscel.ainsmail.ui.list
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,11 +21,22 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ainscel.ainsmail.model.TagPool
 import com.ainscel.ainsmail.ui.mailbox.TagChipUi
 import com.ainscel.ainsmail.ui.shell.avatarColor
+import com.ainscel.ainsmail.ui.shell.rememberAccountAvatar
+import com.ainscel.ainsmail.ui.shell.scaledAvatarFont
+import com.ainscel.ainsmail.ui.shell.scaledAvatarInset
+
+/** 角标外径。字号和内边距按侧栏账号圆的同一比例缩小。 */
+private val AccountBadgeSize = 16.dp
 
 @Composable
 internal fun SenderAvatar(
@@ -32,7 +45,9 @@ internal fun SenderAvatar(
     accountName: String?,
     accountLabel: String,
     accountHue: Float,
+    accountAvatar: String?,
 ) {
+    val accountBitmap = rememberAccountAvatar(accountAvatar)
     Box(Modifier.size(40.dp)) {
         Box(
             Modifier
@@ -45,20 +60,39 @@ internal fun SenderAvatar(
             Text(label, color = Color.White, fontSize = 14.sp)
         }
         if (accountName != null) {
+            val font = scaledAvatarFont(AccountBadgeSize)
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)
-                    .size(16.dp)
+                    .size(AccountBadgeSize)
                     .border(1.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                    .padding(scaledAvatarInset(AccountBadgeSize))
                     .clip(CircleShape)
                     .background(avatarColor(accountHue)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = accountLabel.take(1),
-                    color = Color.White,
-                    fontSize = 8.sp,
-                )
+                if (accountBitmap != null) {
+                    Image(
+                        bitmap = accountBitmap,
+                        contentDescription = accountName,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Text(
+                        text = accountLabel,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip,
+                        style = TextStyle(
+                            color = Color.White,
+                            fontSize = font,
+                            lineHeight = font,
+                            textAlign = TextAlign.Center,
+                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                        ),
+                    )
+                }
             }
         }
     }

@@ -98,6 +98,7 @@ fun MailRow(
                 accountName = row.accountName,
                 accountLabel = row.accountLabel,
                 accountHue = row.accountHue,
+                accountAvatar = row.accountAvatar,
             )
             MailRowTextBlock(
                 row = row,

@@ -61,6 +61,8 @@ data class MailRowUi(
     val senderHue: Float,
     val accountLabel: String,
     val accountHue: Float,
+    /** 全部账号时，角标用的头像文件。没有就画缩小的账号字。 */
+    val accountAvatar: String? = null,
     val tags: List<TagChipUi>,
     val showClassifying: Boolean,
 )
