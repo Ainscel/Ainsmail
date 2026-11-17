@@ -29,12 +29,14 @@ internal fun AccountLoginLayer(
         authorizationLauncher.launch(request)
     }
     LaunchedEffect(login.state.savedTick) {
-        if (login.state.savedTick == 0L) return@LaunchedEffect
+        val tick = login.state.savedTick
+        if (!login.claimSavedTick(tick)) return@LaunchedEffect
         snackbarHostState.showSnackbar(savedMessage)
     }
     LaunchedEffect(login.state.failureTick) {
         val message = failureMessage ?: return@LaunchedEffect
         if (sheet == LoginSheet.Qq) return@LaunchedEffect
+        if (!login.claimFailureTick(login.state.failureTick)) return@LaunchedEffect
         snackbarHostState.showSnackbar(message)
         login.consumeFailure()
     }

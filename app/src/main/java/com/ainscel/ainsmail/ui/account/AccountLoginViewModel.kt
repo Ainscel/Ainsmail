@@ -21,6 +21,7 @@ import com.ainscel.ainsmail.security.LoginLog
 import com.ainscel.ainsmail.security.readImageBytes
 import com.ainscel.ainsmail.security.toAccountError
 import com.ainscel.ainsmail.security.toGoogleSignInFailure
+import com.ainscel.ainsmail.ui.ShownTick
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.common.api.ApiException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -60,6 +61,13 @@ class AccountLoginViewModel(
 
     private var gmailJob: Job? = null
     private var gmailInFlight: Boolean = false
+    /** 已经弹过的提示。界面重建后 tick 还在，不能再弹一次。 */
+    private val shownSaved = ShownTick()
+    private val shownFailure = ShownTick()
+
+    fun claimSavedTick(tick: Long): Boolean = shownSaved.claim(tick)
+
+    fun claimFailureTick(tick: Long): Boolean = shownFailure.claim(tick)
 
     fun openProviders() {
         state = state.copy(sheet = LoginSheet.Providers, failure = null)

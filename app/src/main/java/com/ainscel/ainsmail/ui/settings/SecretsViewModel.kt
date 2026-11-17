@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ainscel.ainsmail.security.SecretRead
+import com.ainscel.ainsmail.ui.ShownTick
 import com.ainscel.ainsmail.security.SecretStore
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -33,6 +34,13 @@ class SecretsViewModel(
 ) : ViewModel() {
     var state by mutableStateOf(SecretsUiState())
         private set
+
+    private val shownSaved = ShownTick()
+    private val shownError = ShownTick()
+
+    fun claimSavedTick(tick: Long): Boolean = shownSaved.claim(tick)
+
+    fun claimErrorTick(tick: Long): Boolean = shownError.claim(tick)
 
     init {
         viewModelScope.launch {

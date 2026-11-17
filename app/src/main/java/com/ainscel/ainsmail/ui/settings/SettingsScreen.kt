@@ -71,6 +71,8 @@ fun SettingsSectionPane(
             SecretsSettings(
                 state = model.state,
                 onEdit = model::onEdit,
+                claimSaved = model::claimSavedTick,
+                claimError = model::claimErrorTick,
                 title = title,
                 onBack = onBack,
                 modifier = modifier,
@@ -103,6 +105,8 @@ private fun EmptySettingsSection(
 private fun SecretsSettings(
     state: SecretsUiState,
     onEdit: (SecretsEdit) -> Unit,
+    claimSaved: (Long) -> Boolean,
+    claimError: (Long) -> Boolean,
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -111,11 +115,11 @@ private fun SecretsSettings(
     val savedMessage = stringResource(R.string.settings_saved)
     val failedMessage = stringResource(R.string.settings_secrets_unreadable)
     LaunchedEffect(state.savedTick) {
-        if (state.savedTick == 0L) return@LaunchedEffect
+        if (!claimSaved(state.savedTick)) return@LaunchedEffect
         snackbarHostState.showSnackbar(savedMessage)
     }
     LaunchedEffect(state.errorTick) {
-        if (state.errorTick == 0L) return@LaunchedEffect
+        if (!claimError(state.errorTick)) return@LaunchedEffect
         snackbarHostState.showSnackbar(failedMessage)
     }
 
