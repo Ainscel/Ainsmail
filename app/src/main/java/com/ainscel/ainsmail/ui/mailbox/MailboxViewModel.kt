@@ -50,7 +50,10 @@ class MailboxViewModel(
         mails = sampleMails,
         catalog = catalog,
     )
-    private val initial = project(session, System.currentTimeMillis())
+    private val initialNow = System.currentTimeMillis()
+    /** 行上的时间文字按这一分钟生成。同一分钟里内容没变就不再格式化。 */
+    private var rowMinute = initialNow / 60_000L
+    private val initial = project(session, initialNow)
     private var observeJob: Job? = null
     private var syncJob: Job? = null
 
@@ -67,6 +70,10 @@ class MailboxViewModel(
         private set
 
     var list by mutableStateOf(initial.list)
+        private set
+
+    /** 列表标题和胶囊只用这一份。不订 [chrome]，提示和账号变化不会重组列表。 */
+    var place by mutableStateOf(MailboxPlace(session.scope, session.section))
         private set
 
     /** 加密文件里的账号。样例不放进来，设置页和侧栏因此不会各持一份。 */
@@ -181,9 +188,18 @@ class MailboxViewModel(
     }
 
     private fun publish(previous: MailboxSession) {
-        val projected = project(session, System.currentTimeMillis(), chrome.accounts)
+        val now = System.currentTimeMillis()
+        val reuse = if (rowsReusable(previous, session, rowMinute, now)) {
+            ListReuse(list.rows, chrome.sectionMailIds, list.tagGroups)
+        } else {
+            null
+        }
+        rowMinute = now / 60_000L
+        val projected = project(session, now, chrome.accounts, reuse)
         if (projected.chrome != chrome) chrome = projected.chrome
         if (projected.list != list) list = projected.list
+        val nextPlace = MailboxPlace(session.scope, session.section)
+        if (nextPlace != place) place = nextPlace
         val nextSaved = if (showingSamples) emptyList() else session.accounts
         if (nextSaved != savedAccounts) savedAccounts = nextSaved
         if (session.reauthAccountIds != reauthAccountIds) reauthAccountIds = session.reauthAccountIds

@@ -201,3 +201,12 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 删掉 `MailDetailPane` 里未使用的返回读取、`UnavailableKind.Login` 和对应文案。矢量路径收成 `pathIcon`。
 - `SplitDragStateTest` 只断言同步的冻结状态。`:app:compileDebugKotlin` 通过。本机路径含「项目」时单元测试进程仍会 ClassNotFound。
 
+## 2026-11-18 05:50
+
+按列表与会话审查收紧重组范围，并让多选跟着当前可见行走。
+
+- 列表改订 `MailboxPlace`（范围、板块），不再读 `MailboxChrome`。对话框草稿留在外层，行列表单独组合；行点击走同一份 `MailListActions`，没变的行可以跳过重组。
+- 已读、标签、类型三种筛选写上之后，多选 id 只留下还看得到的信。多选模式保留，顶栏数量就是可见勾选数。
+- 投影对全部邮件只扫一遍，勾选不写进行模型。同一分钟里信件、目录、账号、范围、板块和筛选都没变时，沿用上一份行、板块 id 和标签分组。
+- `:app:compileDebugKotlin` 与单元测试源码编译通过。`testDebugUnitTest` 仍因工程路径含「项目」无法启动测试进程。
+

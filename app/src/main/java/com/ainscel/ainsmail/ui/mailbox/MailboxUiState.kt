@@ -10,8 +10,8 @@ import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.model.TagPool
 
 /**
- * 根界面要的那一份：当前范围、板块、账号和提示。
- * 列表行不放这里，改一封信不会把遮罩和根组合一起重组。
+ * 根界面和侧栏要的那一份：当前范围、板块、账号和提示。
+ * 列表不读这份。列表另订 [MailboxPlace]，提示和账号变化不会重组列表。
  */
 @Immutable
 data class MailboxChrome(
@@ -24,17 +24,29 @@ data class MailboxChrome(
     val notice: Notice?,
 )
 
-/** 只有列表页订阅。筛选和行放在一起，根界面不读。 */
+/**
+ * 列表页订阅的范围和板块。
+ * 和 [MailboxChrome] 分开，这样提示、账号、板块内的信 id 变化不会重启列表。
+ */
+@Immutable
+data class MailboxPlace(
+    val scope: MailboxScope,
+    val section: Section,
+)
+
+/** 只有列表页订阅。筛选和行放在一起，根界面不读。勾选不写进行里。 */
 @Immutable
 data class MailboxList(
     val readFilter: ReadFilter,
     val selectedTagNames: Set<String>,
     val typeFilter: MailType?,
     val multiSelect: Boolean,
-    val selectedCount: Int,
+    val selectedIds: Set<String>,
     val tagGroups: List<TagGroupUi>,
     val rows: List<MailRowUi>,
-)
+) {
+    val selectedCount: Int get() = selectedIds.size
+}
 
 @Immutable
 data class MailRowUi(
@@ -51,7 +63,6 @@ data class MailRowUi(
     val accountHue: Float,
     val tags: List<TagChipUi>,
     val showClassifying: Boolean,
-    val checked: Boolean,
 )
 
 @Immutable

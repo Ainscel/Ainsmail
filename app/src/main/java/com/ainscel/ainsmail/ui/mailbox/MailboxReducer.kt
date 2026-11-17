@@ -26,16 +26,20 @@ fun reduce(session: MailboxSession, intent: MailboxIntent, noticeId: Long): Redu
                 ReduceOutcome(session.copy(section = intent.section).clearSelection())
             }
         }
-        is MailboxIntent.SetReadFilter -> ReduceOutcome(session.copy(readFilter = intent.filter))
+        is MailboxIntent.SetReadFilter -> ReduceOutcome(
+            session.copy(readFilter = intent.filter).keepVisibleSelection(),
+        )
         is MailboxIntent.ToggleTagFilter -> {
             val next = if (intent.name in session.selectedTags) {
                 session.selectedTags - intent.name
             } else {
                 session.selectedTags + intent.name
             }
-            ReduceOutcome(session.copy(selectedTags = next))
+            ReduceOutcome(session.copy(selectedTags = next).keepVisibleSelection())
         }
-        is MailboxIntent.SetTypeFilter -> ReduceOutcome(session.copy(typeFilter = intent.type))
+        is MailboxIntent.SetTypeFilter -> ReduceOutcome(
+            session.copy(typeFilter = intent.type).keepVisibleSelection(),
+        )
         MailboxIntent.EnterMultiSelect -> {
             ReduceOutcome(session.copy(multiSelect = true, selectedIds = emptySet()))
         }
@@ -140,9 +144,15 @@ private fun retainedScope(scope: MailboxScope, accounts: List<Account>): Mailbox
 fun MailboxSession.mailsInSection(): List<Mail> =
     mails.filter { it.inScope(scope) && it.inSection(section) }
 
-fun MailboxSession.visibleMails(): List<Mail> = mailsInSection().filter(::matchesFilters)
+fun MailboxSession.visibleMails(): List<Mail> {
+    val visible = ArrayList<Mail>()
+    for (mail in mails) {
+        if (mail.inScope(scope) && mail.inSection(section) && matchesFilters(mail)) visible.add(mail)
+    }
+    return visible
+}
 
-private fun MailboxSession.matchesFilters(mail: Mail): Boolean {
+internal fun MailboxSession.matchesFilters(mail: Mail): Boolean {
     val readOk = when (readFilter) {
         ReadFilter.Any -> true
         ReadFilter.Read -> !mail.unread
@@ -155,6 +165,15 @@ private fun MailboxSession.matchesFilters(mail: Mail): Boolean {
 
 private fun MailboxSession.clearSelection(): MailboxSession =
     copy(multiSelect = false, selectedIds = emptySet())
+
+/** 筛选变了之后，多选只留下还看得到的信。多选模式本身保留。 */
+private fun MailboxSession.keepVisibleSelection(): MailboxSession {
+    if (!multiSelect || selectedIds.isEmpty()) return this
+    val visibleIds = HashSet<String>()
+    for (mail in visibleMails()) visibleIds.add(mail.id)
+    val next = selectedIds.intersect(visibleIds)
+    return if (next == selectedIds) this else copy(selectedIds = next)
+}
 
 private fun MailboxSession.markVisibleRead(): MailboxSession {
     val unreadIds = visibleMails().filter { it.unread }.map { it.id }.toSet()

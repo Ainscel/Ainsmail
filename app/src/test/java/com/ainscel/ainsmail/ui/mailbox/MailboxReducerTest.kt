@@ -3,6 +3,7 @@ package com.ainscel.ainsmail.ui.mailbox
 import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.MailType
 import com.ainscel.ainsmail.model.MailboxScope
+import com.ainscel.ainsmail.model.ReadFilter
 import com.ainscel.ainsmail.model.RemoteFolder
 import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.model.TagCatalog
@@ -11,6 +12,7 @@ import com.ainscel.ainsmail.model.TagWord
 import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.model.Provider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -56,6 +58,30 @@ class MailboxReducerTest {
         )
         val narrowed = reduce(session, MailboxIntent.SelectScope(MailboxScope.Account("a2")), 1L).session
         assertEquals(setOf("b"), narrowed.mailsInSection().ids())
+    }
+
+    @Test
+    fun filtersKeepSelectionInsideTheVisibleList() {
+        val session = session(
+            mail("unread", type = MailType.Important, tagNames = listOf("工作")),
+            mail("read", type = MailType.Notice, unread = false),
+        ).selecting("unread", "read")
+
+        val byRead = reduce(session, MailboxIntent.SetReadFilter(ReadFilter.Unread), 1L).session
+        assertEquals(setOf("unread"), byRead.selectedIds)
+        assertTrue(byRead.multiSelect)
+        assertEquals(1, project(byRead, 0L).list.selectedCount)
+
+        val widened = reduce(byRead, MailboxIntent.SetReadFilter(ReadFilter.Any), 2L).session
+        assertEquals(setOf("unread"), widened.selectedIds)
+
+        val byType = reduce(session, MailboxIntent.SetTypeFilter(MailType.Notice), 3L).session
+        assertEquals(setOf("read"), byType.selectedIds)
+        assertTrue(byType.multiSelect)
+
+        val byTag = reduce(session, MailboxIntent.ToggleTagFilter("工作"), 4L).session
+        assertEquals(setOf("unread"), byTag.selectedIds)
+        assertTrue(byTag.multiSelect)
     }
 
     @Test
@@ -256,6 +282,28 @@ class MailboxReducerTest {
     }
 
     @Test
+    fun selectionInTheSameMinuteReusesRows() {
+        val session = session(mail("a"), mail("b")).selecting("a")
+        val now = 1_700_000_000_000L
+        val first = project(session, now)
+        val toggled = reduce(session, MailboxIntent.ToggleSelected("b"), 1L).session
+
+        assertTrue(rowsReusable(session, toggled, now / 60_000, now + 1_000))
+        assertFalse(rowsReusable(session, toggled, now / 60_000, now + 60_000))
+
+        val second = project(
+            toggled,
+            now + 1_000,
+            previousAccounts = first.chrome.accounts,
+            reuse = ListReuse(first.list.rows, first.chrome.sectionMailIds, first.list.tagGroups),
+        )
+        assertSame(first.list.rows, second.list.rows)
+        assertSame(first.chrome.sectionMailIds, second.chrome.sectionMailIds)
+        assertSame(first.chrome.accounts, second.chrome.accounts)
+        assertEquals(setOf("a", "b"), second.list.selectedIds)
+    }
+
+    @Test
     fun replaceMailsKeepsSelectionThatStillExists() {
         val session = session(mail("a"), mail("b")).selecting("a", "gone")
         val next = reduce(
@@ -292,6 +340,7 @@ private fun mail(
     remoteFolder: RemoteFolder = RemoteFolder.Inbox,
     archived: Boolean = false,
     accountId: String = "a1",
+    unread: Boolean = true,
 ): Mail = Mail(
     id = id,
     accountId = accountId,
@@ -302,7 +351,7 @@ private fun mail(
     preview = "",
     body = "占位正文",
     timeMillis = 0L,
-    unread = true,
+    unread = unread,
     type = type,
     tagNames = tagNames,
 )

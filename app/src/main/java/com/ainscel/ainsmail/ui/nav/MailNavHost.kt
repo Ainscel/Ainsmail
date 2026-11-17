@@ -2,6 +2,7 @@ package com.ainscel.ainsmail.ui.nav
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
@@ -13,6 +14,7 @@ import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.SecretStore
 import com.ainscel.ainsmail.ui.detail.ComposePlaceholder
 import com.ainscel.ainsmail.ui.detail.MailDetailPane
+import com.ainscel.ainsmail.ui.list.MailListActions
 import com.ainscel.ainsmail.ui.list.MailListPane
 import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
 import com.ainscel.ainsmail.ui.mailbox.MailboxViewModel
@@ -51,14 +53,19 @@ internal fun MailNavHost(
             entry<MailListRoute>(
                 metadata = TwoPaneStrategy.primaryPane(PrimaryEmpty.Detail),
             ) {
+                val actions = remember(mailbox, backStack, overlay, scope) {
+                    MailListActions(
+                        onIntent = mailbox::onIntent,
+                        onOpenMail = { id -> openMail(backStack, id) },
+                        onCompose = { backStack.add(ComposeRoute()) },
+                        onOpenOverlay = { overlay.open(scope) },
+                    )
+                }
                 MailListPane(
-                    chrome = mailbox.chrome,
+                    place = mailbox.place,
                     list = mailbox.list,
                     openMailId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId,
-                    onIntent = mailbox::onIntent,
-                    onOpenMail = { id -> openMail(backStack, id) },
-                    onCompose = { backStack.add(ComposeRoute()) },
-                    onOpenOverlay = { overlay.open(scope) },
+                    actions = actions,
                 )
             }
             entry<MailDetailRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->

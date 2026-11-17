@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -24,27 +25,34 @@ import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.ui.mailbox.AddTagResult
-import com.ainscel.ainsmail.ui.mailbox.MailboxChrome
 import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
 import com.ainscel.ainsmail.ui.mailbox.MailboxList
+import com.ainscel.ainsmail.ui.mailbox.MailboxPlace
 import com.ainscel.ainsmail.ui.mailbox.title
 import com.ainscel.ainsmail.ui.shell.MailChromeInset
+
+/**
+ * 列表入口共用这一份回调。行组件按邮件 id 调用它，不再各自收一个新 lambda。
+ */
+@Stable
+class MailListActions(
+    val onIntent: (MailboxIntent) -> AddTagResult?,
+    val onOpenMail: (String) -> Unit,
+    val onCompose: () -> Unit,
+    val onOpenOverlay: () -> Unit,
+)
 
 private const val RowReading = "reading"
 private const val RowSelecting = "selecting"
 
 @Composable
 fun MailListPane(
-    chrome: MailboxChrome,
+    place: MailboxPlace,
     list: MailboxList,
     openMailId: String?,
-    onIntent: (MailboxIntent) -> AddTagResult?,
-    onOpenMail: (String) -> Unit,
-    onCompose: () -> Unit,
-    onOpenOverlay: () -> Unit,
+    actions: MailListActions,
     modifier: Modifier = Modifier,
 ) {
-    val listState = rememberLazyListState()
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     var filterOpen by rememberSaveable { mutableStateOf(false) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
@@ -52,12 +60,6 @@ fun MailListPane(
     var tagDialog by rememberSaveable { mutableStateOf(false) }
     var draftTag by rememberSaveable { mutableStateOf("") }
     var capsuleExpanded by rememberSaveable { mutableStateOf(false) }
-    fun perform(intent: MailboxIntent) {
-        onIntent(intent)
-    }
-    LaunchedEffect(chrome.scope, chrome.section) {
-        listState.scrollToItem(0)
-    }
 
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -65,24 +67,24 @@ fun MailListPane(
                 MultiSelectBar(
                     count = list.selectedCount,
                     enabled = list.selectedCount > 0,
-                    onDelete = { perform(MailboxIntent.DeleteSelected) },
+                    onDelete = { actions.onIntent(MailboxIntent.DeleteSelected) },
                     onChangeType = { typeDialog = true },
                     onAddTag = { tagDialog = true },
-                    onArchive = { perform(MailboxIntent.ArchiveSelected) },
-                    onCancel = { perform(MailboxIntent.ExitMultiSelect) },
+                    onArchive = { actions.onIntent(MailboxIntent.ArchiveSelected) },
+                    onCancel = { actions.onIntent(MailboxIntent.ExitMultiSelect) },
                 )
             } else {
                 ListTopBar(
-                    title = stringResource(chrome.section.title()),
-                    onTitleClick = onOpenOverlay,
+                    title = stringResource(place.section.title()),
+                    onTitleClick = actions.onOpenOverlay,
                     menuOpen = menuOpen,
                     onMenuOpen = { menuOpen = true },
                     onMenuDismiss = { menuOpen = false },
                     onFilter = { filterOpen = true },
-                    onMarkRead = { perform(MailboxIntent.MarkVisibleRead) },
+                    onMarkRead = { actions.onIntent(MailboxIntent.MarkVisibleRead) },
                     onMultiSelect = {
                         menuOpen = false
-                        perform(MailboxIntent.EnterMultiSelect)
+                        actions.onIntent(MailboxIntent.EnterMultiSelect)
                     },
                     onSearch = {
                         menuOpen = false
@@ -90,57 +92,27 @@ fun MailListPane(
                     },
                     onCompose = {
                         menuOpen = false
-                        onCompose()
+                        actions.onCompose()
                     },
                 )
             }
-            if (list.rows.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = stringResource(R.string.list_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        bottom = if (chrome.section == Section.Inbox) 88.dp else 16.dp,
-                    ),
-                ) {
-                    items(
-                        items = list.rows,
-                        key = { it.id },
-                        contentType = { if (list.multiSelect) RowSelecting else RowReading },
-                    ) { row ->
-                        MailRow(
-                            row = row,
-                            selected = row.id == openMailId,
-                            multiSelect = list.multiSelect,
-                            onClick = {
-                                if (list.multiSelect) {
-                                    perform(MailboxIntent.ToggleSelected(row.id))
-                                } else {
-                                    onOpenMail(row.id)
-                                }
-                            },
-                            onChecked = { perform(MailboxIntent.ToggleSelected(row.id)) },
-                        )
-                    }
-                }
-            }
+            MailRows(
+                place = place,
+                list = list,
+                openMailId = openMailId,
+                actions = actions,
+            )
         }
-        if (chrome.section == Section.Inbox) {
+        if (place.section == Section.Inbox) {
             TypeCapsule(
                 expanded = capsuleExpanded,
                 selected = list.typeFilter,
                 onExpand = { capsuleExpanded = true },
                 onCollapse = {
-                    perform(MailboxIntent.SetTypeFilter(null))
+                    actions.onIntent(MailboxIntent.SetTypeFilter(null))
                     capsuleExpanded = false
                 },
-                onSelect = { perform(MailboxIntent.SetTypeFilter(it)) },
+                onSelect = { actions.onIntent(MailboxIntent.SetTypeFilter(it)) },
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(MailChromeInset)
@@ -159,11 +131,11 @@ fun MailListPane(
         onDismissType = { typeDialog = false },
         onDismissTag = { tagDialog = false },
         onPickType = {
-            perform(MailboxIntent.SetType(it))
+            actions.onIntent(MailboxIntent.SetType(it))
             typeDialog = false
         },
         onConfirmTag = {
-            if (onIntent(MailboxIntent.AddTag(draftTag)) == AddTagResult.Added) {
+            if (actions.onIntent(MailboxIntent.AddTag(draftTag)) == AddTagResult.Added) {
                 draftTag = ""
                 tagDialog = false
             }
@@ -174,12 +146,58 @@ fun MailListPane(
             readFilter = list.readFilter,
             selectedTags = list.selectedTagNames,
             groups = list.tagGroups,
-            onReadFilter = { perform(MailboxIntent.SetReadFilter(it)) },
-            onToggleTag = { perform(MailboxIntent.ToggleTagFilter(it)) },
+            onReadFilter = { actions.onIntent(MailboxIntent.SetReadFilter(it)) },
+            onToggleTag = { actions.onIntent(MailboxIntent.ToggleTagFilter(it)) },
             onDismiss = { filterOpen = false },
         )
     }
     if (searchOpen) {
         SearchPendingDialog(onDismiss = { searchOpen = false })
+    }
+}
+
+/**
+ * 行列表单独一个组合。对话框草稿和菜单开关不进这里，打字不会把可见行重新组合一遍。
+ */
+@Composable
+private fun MailRows(
+    place: MailboxPlace,
+    list: MailboxList,
+    openMailId: String?,
+    actions: MailListActions,
+) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(place.scope, place.section) {
+        listState.scrollToItem(0)
+    }
+    if (list.rows.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = stringResource(R.string.list_empty),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    } else {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                bottom = if (place.section == Section.Inbox) 88.dp else 16.dp,
+            ),
+        ) {
+            items(
+                items = list.rows,
+                key = { it.id },
+                contentType = { if (list.multiSelect) RowSelecting else RowReading },
+            ) { row ->
+                MailRow(
+                    row = row,
+                    selected = row.id == openMailId,
+                    multiSelect = list.multiSelect,
+                    checked = row.id in list.selectedIds,
+                    actions = actions,
+                )
+            }
+        }
     }
 }

@@ -1,9 +1,12 @@
 package com.ainscel.ainsmail.ui.mailbox
 
+import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.MailType
 import com.ainscel.ainsmail.model.MailboxScope
 import com.ainscel.ainsmail.model.Section
+import com.ainscel.ainsmail.model.inScope
+import com.ainscel.ainsmail.model.inSection
 import com.ainscel.ainsmail.model.TagPool
 import java.time.Instant
 import java.time.ZoneId
@@ -13,6 +16,34 @@ data class MailboxProjection(
     val list: MailboxList,
 )
 
+/** 行内容没变时沿用上一份。勾选不在里面。 */
+class ListReuse(
+    val rows: List<MailRowUi>,
+    val sectionMailIds: Set<String>,
+    val tagGroups: List<TagGroupUi>,
+)
+
+/**
+ * 同一分钟里，信件、目录、账号、范围、板块和筛选都没变，行就可以复用。
+ * 时间文字只跟「现在」是否还在同一分钟有关，勾选不算。
+ */
+fun rowsReusable(
+    previous: MailboxSession,
+    next: MailboxSession,
+    previousMinute: Long,
+    now: Long,
+): Boolean {
+    return previousMinute == now / 60_000L &&
+        previous.mails === next.mails &&
+        previous.catalog == next.catalog &&
+        previous.accounts == next.accounts &&
+        previous.scope == next.scope &&
+        previous.section == next.section &&
+        previous.readFilter == next.readFilter &&
+        previous.selectedTags == next.selectedTags &&
+        previous.typeFilter == next.typeFilter
+}
+
 /**
  * [previousAccounts] 的 id 和名字都没变时沿用那一份。
  * 根界面拿着同一个列表实例，账号没变就不会因为列表刷新去重组头像列。
@@ -21,15 +52,27 @@ fun project(
     session: MailboxSession,
     now: Long,
     previousAccounts: List<AccountUi> = emptyList(),
+    reuse: ListReuse? = null,
 ): MailboxProjection {
-    val showAccount = session.scope is MailboxScope.All
-    val sectionMails = session.mailsInSection()
+    val sectionMailIds: Set<String>
+    val rows: List<MailRowUi>
+    val groups: List<TagGroupUi>
+    if (reuse != null) {
+        sectionMailIds = reuse.sectionMailIds
+        rows = reuse.rows
+        groups = reuse.tagGroups
+    } else {
+        val built = scanRows(session, now)
+        sectionMailIds = built.sectionMailIds
+        rows = built.rows
+        groups = tagGroups(session)
+    }
     return MailboxProjection(
         chrome = MailboxChrome(
             scope = session.scope,
             selectedAccountName = selectedAccountName(session),
             section = session.section,
-            sectionMailIds = sectionMails.map { it.id }.toSet(),
+            sectionMailIds = sectionMailIds,
             accounts = accountUi(session, previousAccounts),
             notice = session.notice,
         ),
@@ -38,13 +81,37 @@ fun project(
             selectedTagNames = session.selectedTags,
             typeFilter = session.typeFilter,
             multiSelect = session.multiSelect,
-            selectedCount = session.selectedIds.size,
-            tagGroups = tagGroups(session),
-            rows = session.visibleMails()
-                .sortedByDescending { it.timeMillis }
-                .map { toRow(session, it, now, showAccount) },
+            selectedIds = session.selectedIds,
+            tagGroups = groups,
+            rows = rows,
         ),
     )
+}
+
+private class ScannedRows(
+    val sectionMailIds: Set<String>,
+    val rows: List<MailRowUi>,
+)
+
+/** 全部邮件只扫一遍：板块 id 和可见行一起收齐。 */
+private fun scanRows(session: MailboxSession, now: Long): ScannedRows {
+    val showAccount = session.scope is MailboxScope.All
+    val sectionMailIds = HashSet<String>()
+    val visible = ArrayList<Mail>()
+    for (mail in session.mails) {
+        if (!mail.inScope(session.scope) || !mail.inSection(session.section)) continue
+        sectionMailIds.add(mail.id)
+        if (session.matchesFilters(mail)) visible.add(mail)
+    }
+    if (visible.size > 1) visible.sortByDescending { it.timeMillis }
+    val zone = ZoneId.systemDefault()
+    val accountsById = HashMap<String, Account>(session.accounts.size)
+    for (account in session.accounts) accountsById.putIfAbsent(account.id, account)
+    val rows = ArrayList<MailRowUi>(visible.size)
+    for (mail in visible) {
+        rows.add(toRow(session, mail, now, zone, showAccount, accountsById))
+    }
+    return ScannedRows(sectionMailIds, rows)
 }
 
 /** 按导航给出的 id 取正文展示。打开哪封信不写进会话，这里也不读列表行。 */
@@ -85,14 +152,21 @@ private fun selectedAccountName(session: MailboxSession): String? = when (val sc
     is MailboxScope.Account -> session.accounts.find { it.id == scope.id }?.name
 }
 
-private fun toRow(session: MailboxSession, mail: Mail, now: Long, showAccount: Boolean): MailRowUi {
-    val account = session.accounts.find { it.id == mail.accountId }
+private fun toRow(
+    session: MailboxSession,
+    mail: Mail,
+    now: Long,
+    zone: ZoneId,
+    showAccount: Boolean,
+    accountsById: Map<String, Account>,
+): MailRowUi {
+    val account = accountsById[mail.accountId]
     return MailRowUi(
         id = mail.id,
         fromName = mail.fromName,
         subject = mail.subject,
         preview = mail.preview,
-        timeLabel = formatMailTime(mail.timeMillis, now),
+        timeLabel = formatMailTime(mail.timeMillis, now, zone),
         unread = mail.unread,
         accountName = if (showAccount) account?.name else null,
         senderLabel = avatarLabel(mail.fromName),
@@ -105,7 +179,6 @@ private fun toRow(session: MailboxSession, mail: Mail, now: Long, showAccount: B
         showClassifying = session.section == Section.Inbox &&
             session.typeFilter == null &&
             mail.type == null,
-        checked = mail.id in session.selectedIds,
     )
 }
 
@@ -125,8 +198,11 @@ fun avatarHue(name: String): Float = ((name.hashCode() and 0x7fffffff) % 360).to
 /** 中文取前两个字，拉丁字母取前两个字母。空白不算。 */
 fun avatarLabel(name: String): String = name.filter { !it.isWhitespace() }.take(2)
 
-fun formatMailTime(epochMillis: Long, nowMillis: Long): String {
-    val zone = ZoneId.systemDefault()
+fun formatMailTime(
+    epochMillis: Long,
+    nowMillis: Long,
+    zone: ZoneId = ZoneId.systemDefault(),
+): String {
     val moment = Instant.ofEpochMilli(epochMillis).atZone(zone)
     val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
     return if (moment.toLocalDate() == today) {

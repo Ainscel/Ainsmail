@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
+import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
 import com.ainscel.ainsmail.ui.mailbox.MailRowUi
 
 /** 标题比预览更早收束的右间距。 */
@@ -42,13 +43,17 @@ private val MetaGap = 8.dp
 /** 正文三行之间的行距。 */
 private val LineGap = 2.dp
 
+/**
+ * 点击走同一份 [actions]，参数里不放新 lambda。
+ * 勾选或当前信没落到这一行时，整行可以跳过重组。
+ */
 @Composable
 fun MailRow(
     row: MailRowUi,
     selected: Boolean,
     multiSelect: Boolean,
-    onClick: () -> Unit,
-    onChecked: (Boolean) -> Unit,
+    checked: Boolean,
+    actions: MailListActions,
     modifier: Modifier = Modifier,
 ) {
     val background = if (selected) {
@@ -63,7 +68,13 @@ fun MailRow(
             .fillMaxWidth()
             .clipToBounds()
             .background(background)
-            .clickable(onClick = onClick)
+            .clickable {
+                if (multiSelect) {
+                    actions.onIntent(MailboxIntent.ToggleSelected(row.id))
+                } else {
+                    actions.onOpenMail(row.id)
+                }
+            }
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(
@@ -76,8 +87,8 @@ fun MailRow(
                 exit = fadeOut() + shrinkHorizontally(),
             ) {
                 Checkbox(
-                    checked = row.checked,
-                    onCheckedChange = onChecked,
+                    checked = checked,
+                    onCheckedChange = { actions.onIntent(MailboxIntent.ToggleSelected(row.id)) },
                     modifier = Modifier.padding(end = 4.dp),
                 )
             }
