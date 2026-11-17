@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ainscel.ainsmail.R
+import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.SecretStore
 import com.ainscel.ainsmail.ui.shell.SplitFullscreenButton
@@ -39,6 +40,9 @@ fun SettingsSectionPane(
     section: SettingsSection,
     book: AccountBook,
     secrets: SecretStore,
+    accounts: List<Account>,
+    reauthAccountIds: Set<String>,
+    onRelogin: (Account) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -51,9 +55,12 @@ fun SettingsSectionPane(
             )
             AccountSettings(
                 state = model.state,
+                accounts = accounts,
+                reauthAccountIds = reauthAccountIds,
                 onRename = model::rename,
                 onPickAvatar = model::replaceAvatar,
                 onRemove = model::remove,
+                onRelogin = onRelogin,
                 title = title,
                 onBack = onBack,
                 modifier = modifier,

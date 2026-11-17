@@ -150,3 +150,11 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - `MailboxViewModel` 不再引用数据库 / IMAP 类型，观察、首拉、回写由 `MailApp` 传入。
 - 本机已读 / 归档先记挂起项，库快照跟上后再放开，避免旧 Flow 把操作冲掉；改显示名不再重连 IMAP。
 - `:app:compileDebugKotlin` 通过。
+
+## 2026-11-18 01:50
+
+修好过期账号在设置里消失、侧栏头像还在的问题。
+
+- 设置「账号」以前只订 `AccountSettingsViewModel` 的目录。目录还停在 `Loading` 时页面什么都不画，侧栏却仍用邮箱会话里的账号，于是出现幽灵头像。
+- 设置列表现在直接读 `MailboxViewModel.savedAccounts`（样例不计入）。过期记在会话的 `reauthAccountIds` 里，账号行显示「登录已过期」和「重新登录」。
+- 同一邮箱再次登录改为写回原记录的令牌或授权码，不再报「已经添加过」。成功后清掉过期标记并重新收信。头像仍留在侧栏，直到用户自己删除账号。

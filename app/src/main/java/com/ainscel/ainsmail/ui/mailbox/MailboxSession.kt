@@ -47,6 +47,8 @@ data class MailboxSession(
     val selectedIds: Set<String> = emptySet(),
     val notice: Notice? = null,
     val undo: UndoRecord? = null,
+    /** 访问令牌已过期、需要在设置里重新登录的账号。 */
+    val reauthAccountIds: Set<String> = emptySet(),
 )
 
 data class ReduceOutcome(

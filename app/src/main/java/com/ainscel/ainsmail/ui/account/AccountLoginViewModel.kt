@@ -45,6 +45,8 @@ data class LoginUiState(
     val failure: AccountError? = null,
     val failureTick: Long = 0,
     val savedTick: Long = 0,
+    /** 最近一次成功写入的账号。用来清掉过期标记。 */
+    val savedAccountId: String? = null,
 )
 
 class AccountLoginViewModel(
@@ -91,12 +93,18 @@ class AccountLoginViewModel(
                     book.addQq(address, displayName, authCode, bytes)
                 }
             }
+            val savedId = if (written is AccountWrite.Saved) {
+                withContext(io) { book.idForAddress(address) }
+            } else {
+                null
+            }
             state = if (written is AccountWrite.Saved) {
                 state.copy(
                     sheet = LoginSheet.None,
                     saving = false,
                     failure = null,
                     savedTick = state.savedTick + 1,
+                    savedAccountId = savedId,
                 )
             } else {
                 val reason = written.toAccountError()
@@ -210,6 +218,11 @@ class AccountLoginViewModel(
                 avatar = signed.picture,
             )
         }
+        val savedId = if (written is AccountWrite.Saved) {
+            withContext(io) { book.idForAddress(signed.email) }
+        } else {
+            null
+        }
         gmailInFlight = false
         state = if (written is AccountWrite.Saved) {
             state.copy(
@@ -218,6 +231,7 @@ class AccountLoginViewModel(
                 authorizationRequest = null,
                 failure = null,
                 savedTick = state.savedTick + 1,
+                savedAccountId = savedId,
             )
         } else {
             val mapped = written.toAccountError()

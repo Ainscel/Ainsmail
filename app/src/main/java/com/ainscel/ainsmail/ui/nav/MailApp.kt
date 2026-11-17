@@ -30,6 +30,7 @@ import com.ainscel.ainsmail.data.mail.MailLocalStore
 import com.ainscel.ainsmail.data.sampleCatalog
 import com.ainscel.ainsmail.data.sampleMails
 import com.ainscel.ainsmail.model.MailboxScope
+import com.ainscel.ainsmail.model.Provider
 import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.SecretStore
 import com.ainscel.ainsmail.ui.account.AccountLoginLayer
@@ -95,6 +96,11 @@ fun MailApp(modifier: Modifier = Modifier) {
         hostState = snackbarHostState,
         onConsumed = { unavailable = null },
     )
+    LaunchedEffect(login.state.savedTick) {
+        val id = login.state.savedAccountId ?: return@LaunchedEffect
+        if (login.state.savedTick == 0L) return@LaunchedEffect
+        mailbox.perform(MailboxIntent.ClearReauth(id))
+    }
     LaunchedEffect(chrome.sectionMailIds) {
         val openId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId ?: return@LaunchedEffect
         if (openId !in chrome.sectionMailIds) backStack.removeAll { it is MailDetailRoute }
@@ -115,6 +121,12 @@ fun MailApp(modifier: Modifier = Modifier) {
                     mailbox = mailbox,
                     book = book,
                     secrets = secrets,
+                    onRelogin = { account ->
+                        when (account.provider) {
+                            Provider.Gmail -> (context as? Activity)?.let(login::startGmail)
+                            Provider.Qq -> login.openQq()
+                        }
+                    },
                     backStack = backStack,
                     overlay = overlay,
                     scope = scope,

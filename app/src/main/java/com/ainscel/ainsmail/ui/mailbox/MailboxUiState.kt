@@ -107,6 +107,7 @@ sealed interface MailboxIntent {
     /** 本地库 Flow 推送的邮件头；不改筛选与多选。 */
     data class ReplaceMails(val mails: List<Mail>) : MailboxIntent
     data class ReportNeedsReauth(val accountId: String) : MailboxIntent
+    data class ClearReauth(val accountId: String) : MailboxIntent
     data object ReportSyncFailed : MailboxIntent
 }
 

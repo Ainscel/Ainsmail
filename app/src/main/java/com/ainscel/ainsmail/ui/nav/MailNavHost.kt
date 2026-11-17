@@ -8,6 +8,7 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.scene.SceneStrategy
 import androidx.navigation3.ui.NavDisplay
+import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.SecretStore
 import com.ainscel.ainsmail.ui.detail.ComposePlaceholder
@@ -26,6 +27,7 @@ internal fun MailNavHost(
     mailbox: MailboxViewModel,
     book: AccountBook,
     secrets: SecretStore,
+    onRelogin: (Account) -> Unit,
     backStack: NavBackStack<NavKey>,
     overlay: OverlayController,
     scope: CoroutineScope,
@@ -88,6 +90,9 @@ internal fun MailNavHost(
                     section = route.section,
                     book = book,
                     secrets = secrets,
+                    accounts = mailbox.savedAccounts,
+                    reauthAccountIds = mailbox.reauthAccountIds,
+                    onRelogin = onRelogin,
                     onBack = { backStack.removeLastOrNull() },
                 )
             }

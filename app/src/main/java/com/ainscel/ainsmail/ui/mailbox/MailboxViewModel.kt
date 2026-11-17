@@ -69,6 +69,13 @@ class MailboxViewModel(
     var list by mutableStateOf(initial.list)
         private set
 
+    /** 加密文件里的账号。样例不放进来，设置页和侧栏因此不会各持一份。 */
+    var savedAccounts by mutableStateOf<List<Account>>(emptyList())
+        private set
+
+    var reauthAccountIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
     /** 正文只订阅信件本身的变化，筛选和多选不带动正文重组。 */
     private var contentEpoch by mutableIntStateOf(0)
 
@@ -79,6 +86,9 @@ class MailboxViewModel(
         if (session != previous) {
             publish(previous)
             if (intent.writesLocalMail()) persistLocal(previous, session)
+            if (intent is MailboxIntent.ClearReauth && !showingSamples) {
+                startRealMailPipeline(session.accounts.map { it.id })
+            }
         }
         return outcome.tagResult
     }
@@ -190,6 +200,9 @@ class MailboxViewModel(
         val projected = project(session, System.currentTimeMillis(), chrome.accounts)
         if (projected.chrome != chrome) chrome = projected.chrome
         if (projected.list != list) list = projected.list
+        val nextSaved = if (showingSamples) emptyList() else session.accounts
+        if (nextSaved != savedAccounts) savedAccounts = nextSaved
+        if (session.reauthAccountIds != reauthAccountIds) reauthAccountIds = session.reauthAccountIds
         val contentChanged = previous.mails != session.mails ||
             previous.accounts != session.accounts ||
             previous.catalog != session.catalog

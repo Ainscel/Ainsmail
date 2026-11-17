@@ -101,6 +101,17 @@ class AccountBook(
         val email = qqAddress(address) ?: return AccountWrite.InvalidAddress
         val code = authCode.trim()
         if (code.isEmpty()) return AccountWrite.BlankCode
+        synchronized(lock) {
+            val existing = records.find { it.address.equals(email, ignoreCase = true) }
+            if (existing != null) {
+                if (existing.provider != AccountRecord.PROVIDER_QQ) return AccountWrite.Duplicate
+                val name = displayName.trim().ifBlank { existing.displayName }
+                records = records.map { record ->
+                    if (record.id != existing.id) record else record.copy(displayName = name, authCode = code)
+                }
+                return commit()
+            }
+        }
         return insert(
             providerKey = AccountRecord.PROVIDER_QQ,
             address = email,
@@ -123,6 +134,25 @@ class AccountBook(
         val email = mailboxAddress(address) ?: return AccountWrite.InvalidAddress
         val token = accessToken.trim()
         if (token.isEmpty()) return AccountWrite.BlankCode
+        synchronized(lock) {
+            val existing = records.find { it.address.equals(email, ignoreCase = true) }
+            if (existing != null) {
+                if (existing.provider != AccountRecord.PROVIDER_GMAIL) return AccountWrite.Duplicate
+                val name = displayName.trim().ifBlank { existing.displayName }
+                records = records.map { record ->
+                    if (record.id != existing.id) {
+                        record
+                    } else {
+                        record.copy(
+                            displayName = name,
+                            accessToken = token,
+                            accessTokenExpiresAtEpochMs = expiresAtEpochMs,
+                        )
+                    }
+                }
+                return commit()
+            }
+        }
         return insert(
             providerKey = AccountRecord.PROVIDER_GMAIL,
             address = email,
@@ -133,6 +163,11 @@ class AccountBook(
             avatar = avatar,
             avatarRequired = false,
         )
+    }
+
+    fun idForAddress(address: String): String? = synchronized(lock) {
+        val email = address.trim()
+        records.find { it.address.equals(email, ignoreCase = true) }?.id
     }
 
     fun rename(id: String, displayName: String): AccountWrite = synchronized(lock) {

@@ -70,12 +70,17 @@ fun reduce(session: MailboxSession, intent: MailboxIntent, noticeId: Long): Redu
                 scope = retainedScope(session.scope, intent.accounts),
                 undo = null,
                 notice = null,
+                reauthAccountIds = emptySet(),
             ).clearSelection(),
         )
         is MailboxIntent.ReplaceAccounts -> {
             val scope = retainedScope(session.scope, intent.accounts)
-            val next = session.copy(accounts = intent.accounts, scope = scope)
-                .let { if (it.scope == session.scope) it else it.clearSelection() }
+            val ids = intent.accounts.map { it.id }.toSet()
+            val next = session.copy(
+                accounts = intent.accounts,
+                scope = scope,
+                reauthAccountIds = session.reauthAccountIds.intersect(ids),
+            ).let { if (it.scope == session.scope) it else it.clearSelection() }
             if (next == session) ReduceOutcome(session) else ReduceOutcome(next)
         }
         is MailboxIntent.RestoreSamples -> ReduceOutcome(
@@ -85,6 +90,7 @@ fun reduce(session: MailboxSession, intent: MailboxIntent, noticeId: Long): Redu
                 scope = MailboxScope.All,
                 undo = null,
                 notice = null,
+                reauthAccountIds = emptySet(),
             ).clearSelection(),
         )
         is MailboxIntent.ReplaceMails -> {
@@ -106,8 +112,20 @@ fun reduce(session: MailboxSession, intent: MailboxIntent, noticeId: Long): Redu
             }
         }
         is MailboxIntent.ReportNeedsReauth -> ReduceOutcome(
-            session.copy(notice = Notice.NeedsReauth(noticeId, intent.accountId)),
+            session.copy(
+                notice = Notice.NeedsReauth(noticeId, intent.accountId),
+                reauthAccountIds = session.reauthAccountIds + intent.accountId,
+            ),
         )
+        is MailboxIntent.ClearReauth -> {
+            if (intent.accountId !in session.reauthAccountIds) {
+                ReduceOutcome(session)
+            } else {
+                ReduceOutcome(
+                    session.copy(reauthAccountIds = session.reauthAccountIds - intent.accountId),
+                )
+            }
+        }
         MailboxIntent.ReportSyncFailed -> ReduceOutcome(
             session.copy(notice = Notice.SyncFailed(noticeId)),
         )

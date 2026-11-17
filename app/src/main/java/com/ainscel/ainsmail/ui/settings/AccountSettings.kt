@@ -28,9 +28,12 @@ import com.ainscel.ainsmail.ui.account.rememberAccountImagePicker
 @Composable
 internal fun AccountSettings(
     state: AccountSettingsUiState,
+    accounts: List<Account>,
+    reauthAccountIds: Set<String>,
     onRename: (String, String) -> Unit,
     onPickAvatar: (String, Uri) -> Unit,
     onRemove: (String) -> Unit,
+    onRelogin: (Account) -> Unit,
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -46,16 +49,19 @@ internal fun AccountSettings(
     SettingsSectionFrame(title = title, onBack = onBack, modifier = modifier) {
         AccountSettingsList(
             state = state,
+            accounts = accounts,
+            reauthAccountIds = reauthAccountIds,
             onRename = { renaming = it },
             onAvatar = {
                 pendingAvatar = it
                 pickAvatar()
             },
             onRemove = { removing = it },
+            onRelogin = onRelogin,
         )
     }
     renaming?.let { id ->
-        val account = state.accounts.find { it.id == id }
+        val account = accounts.find { it.id == id }
         if (account != null) {
             RenameAccountDialog(
                 initial = account.name,
@@ -81,9 +87,12 @@ internal fun AccountSettings(
 @Composable
 private fun AccountSettingsList(
     state: AccountSettingsUiState,
+    accounts: List<Account>,
+    reauthAccountIds: Set<String>,
     onRename: (String) -> Unit,
     onAvatar: (String) -> Unit,
     onRemove: (String) -> Unit,
+    onRelogin: (Account) -> Unit,
 ) {
     Column(
         Modifier
@@ -92,20 +101,21 @@ private fun AccountSettingsList(
             .padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
         when {
-            !state.loaded -> Unit
+            accounts.isNotEmpty() -> accounts.forEach { account ->
+                AccountSettingsRow(
+                    account = account,
+                    needsReauth = account.id in reauthAccountIds,
+                    onRename = { onRename(account.id) },
+                    onAvatar = { onAvatar(account.id) },
+                    onRemove = { onRemove(account.id) },
+                    onRelogin = { onRelogin(account) },
+                )
+            }
             state.unreadable -> Text(
                 text = stringResource(R.string.settings_secrets_unreadable),
                 color = MaterialTheme.colorScheme.error,
             )
-            state.accounts.isEmpty() -> Text(stringResource(R.string.settings_account_empty))
-            else -> state.accounts.forEach { account ->
-                AccountSettingsRow(
-                    account = account,
-                    onRename = { onRename(account.id) },
-                    onAvatar = { onAvatar(account.id) },
-                    onRemove = { onRemove(account.id) },
-                )
-            }
+            state.loaded -> Text(stringResource(R.string.settings_account_empty))
         }
         if (state.failure != null) {
             Text(
@@ -120,13 +130,25 @@ private fun AccountSettingsList(
 @Composable
 private fun AccountSettingsRow(
     account: Account,
+    needsReauth: Boolean,
     onRename: () -> Unit,
     onAvatar: () -> Unit,
     onRemove: () -> Unit,
+    onRelogin: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
         Text(account.name, style = MaterialTheme.typography.titleMedium)
         Text(account.address, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (needsReauth) {
+            Text(
+                text = stringResource(R.string.settings_account_reauth),
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            TextButton(onClick = onRelogin) {
+                Text(stringResource(R.string.settings_account_relogin))
+            }
+        }
         TextButton(onClick = onRename) { Text(stringResource(R.string.settings_account_rename)) }
         TextButton(onClick = onAvatar) { Text(stringResource(R.string.settings_account_avatar)) }
         TextButton(onClick = onRemove) { Text(stringResource(R.string.settings_account_delete)) }

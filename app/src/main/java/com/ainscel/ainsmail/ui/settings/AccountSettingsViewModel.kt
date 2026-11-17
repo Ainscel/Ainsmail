@@ -38,6 +38,7 @@ class AccountSettingsViewModel(
         private set
 
     init {
+        viewModelScope.launch(io) { book.load() }
         viewModelScope.launch {
             book.directory.collect { directory ->
                 state = when (directory) {
