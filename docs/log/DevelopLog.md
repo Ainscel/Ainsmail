@@ -219,3 +219,12 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 没有头像时，字号和内边距按侧栏 48.dp / 14.sp 的比例缩小到 16.dp，并关掉字体内边距，两个字完整落在圆心里。
 - `:app:compileDebugKotlin` 通过。
 
+## 2026-11-18 06:30
+
+加了临时记帧按钮，和邮箱逻辑分开。
+
+- 调试包右上角有「记帧」。点一次开始，再点停止。停止时把超时帧和最慢的几帧写到 logcat 标签 `AinsmailFrame`，并追加到 `files/debug/frame-jank.log`。
+- 回调里只加计数，不把帧率写进界面。按钮只在点击时重组。
+- 入口只在 `MainActivity` 叠了一层。删 `ui/debug/FrameJankOverlay.kt` 和这层调用即可去掉。
+- `:app:compileDebugKotlin` 通过。
+
