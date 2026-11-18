@@ -135,4 +135,16 @@ interface MailDao {
         """,
     )
     suspend fun markHistoryDone(accountIds: List<String>)
+
+    @Query("DELETE FROM mail_headers WHERE accountId IN (:accountIds)")
+    suspend fun deleteHeaders(accountIds: List<String>)
+
+    @Query("DELETE FROM folder_sync_cursors WHERE accountId IN (:accountIds)")
+    suspend fun deleteCursors(accountIds: List<String>)
+
+    @Transaction
+    suspend fun deleteAccounts(accountIds: List<String>) {
+        deleteHeaders(accountIds)
+        deleteCursors(accountIds)
+    }
 }

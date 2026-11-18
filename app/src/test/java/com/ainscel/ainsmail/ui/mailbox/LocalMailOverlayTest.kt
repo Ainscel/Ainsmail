@@ -11,39 +11,89 @@ import org.junit.Test
 
 class LocalMailOverlayTest {
     @Test
-    fun oldSnapshotDoesNotCoverReadArchiveOrLocalDelete() {
+    fun pendingFlagsDoNotCoverEnvelope() {
         val pending = linkedMapOf(
-            "a" to mail(id = "a", unread = false, archived = true, locallyDeleted = true),
+            "a" to LocalFlags(unread = false, archived = true, locallyDeleted = true),
         )
-        val merged = mergePending(pending, listOf(mail(id = "a", unread = true, subject = "新主题")))
+        val merged = mergeSnapshot(
+            pending,
+            listOf(mail(id = "a", unread = true, subject = "新主题")),
+            emptyList(),
+        )
         val row = merged.single()
         assertFalse(row.unread)
         assertTrue(row.archived)
         assertTrue(row.locallyDeleted)
-        assertEquals("a", row.subject)
+        assertEquals("新主题", row.subject)
         assertEquals(setOf("a"), pending.keys)
     }
 
     @Test
-    fun dropsPendingOnceDatabaseCatchesUp() {
-        val pending = linkedMapOf("a" to mail(id = "a", unread = false, subject = "旧"))
-        val merged = mergePending(pending, listOf(mail(id = "a", unread = false, subject = "新主题")))
-        assertEquals("新主题", merged.single().subject)
+    fun sessionFieldsSurviveSnapshot() {
+        val previous = listOf(
+            mail(
+                id = "a",
+                subject = "旧",
+                type = MailType.Notice,
+                tagNames = listOf("课程"),
+                preview = "预览",
+                body = "正文",
+            ),
+        )
+        val merged = mergeSnapshot(
+            linkedMapOf(),
+            listOf(mail(id = "a", subject = "新主题")),
+            previous,
+        )
+        val row = merged.single()
+        assertEquals("新主题", row.subject)
+        assertEquals(MailType.Notice, row.type)
+        assertEquals(listOf("课程"), row.tagNames)
+        assertEquals("预览", row.preview)
+        assertEquals("正文", row.body)
+    }
+
+    @Test
+    fun dropsPendingOnceDatabaseCatchesUpAndKeepsSessionFields() {
+        val pending = linkedMapOf(
+            "a" to LocalFlags(unread = false, archived = false, locallyDeleted = false),
+        )
+        val previous = listOf(
+            mail(id = "a", unread = false, type = MailType.Verify, tagNames = listOf("登录")),
+        )
+        val merged = mergeSnapshot(
+            pending,
+            listOf(mail(id = "a", unread = false, subject = "新主题")),
+            previous,
+        )
+        val row = merged.single()
+        assertEquals("新主题", row.subject)
+        assertEquals(MailType.Verify, row.type)
+        assertEquals(listOf("登录"), row.tagNames)
         assertTrue(pending.isEmpty())
     }
 
     @Test
     fun dropsPendingMissingFromDatabase() {
-        val pending = linkedMapOf("gone" to mail(id = "gone", locallyDeleted = true))
-        val merged = mergePending(pending, listOf(mail(id = "a")))
+        val pending = linkedMapOf(
+            "gone" to LocalFlags(unread = true, archived = false, locallyDeleted = true),
+        )
+        val merged = mergeSnapshot(pending, listOf(mail(id = "a")), emptyList())
         assertEquals(listOf("a"), merged.map { it.id })
         assertTrue(pending.isEmpty())
     }
 
     @Test
-    fun emptyPendingReturnsTheDatabaseList() {
+    fun emptyPendingWithoutPreviousReturnsTheDatabaseList() {
         val fromDb = listOf(mail(id = "a"))
-        assertSame(fromDb, mergePending(linkedMapOf(), fromDb))
+        assertSame(fromDb, mergeSnapshot(linkedMapOf(), fromDb, emptyList()))
+    }
+
+    @Test
+    fun matchingSessionFieldsKeepTheDatabaseList() {
+        val fromDb = listOf(mail(id = "a", type = MailType.Notice, tagNames = listOf("课程")))
+        val previous = listOf(mail(id = "a", type = MailType.Notice, tagNames = listOf("课程")))
+        assertSame(fromDb, mergeSnapshot(linkedMapOf(), fromDb, previous))
     }
 
     @Test
@@ -61,6 +111,10 @@ private fun mail(
     archived: Boolean = false,
     locallyDeleted: Boolean = false,
     subject: String = id,
+    type: MailType? = null,
+    tagNames: List<String> = emptyList(),
+    preview: String = "",
+    body: String = "",
 ): Mail = Mail(
     id = id,
     accountId = "a1",
@@ -69,10 +123,10 @@ private fun mail(
     locallyDeleted = locallyDeleted,
     fromName = "发件人",
     subject = subject,
-    preview = "",
-    body = "",
+    preview = preview,
+    body = body,
     timeMillis = 0L,
     unread = unread,
-    type = null,
-    tagNames = emptyList(),
+    type = type,
+    tagNames = tagNames,
 )

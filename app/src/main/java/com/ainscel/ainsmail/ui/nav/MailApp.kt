@@ -70,6 +70,7 @@ fun MailApp(modifier: Modifier = Modifier) {
                 }
             },
             persistMails = mailStore::persistLocalMails,
+            forgetAccounts = firstSync::forgetAccounts,
             io = Dispatchers.IO,
         )
     }

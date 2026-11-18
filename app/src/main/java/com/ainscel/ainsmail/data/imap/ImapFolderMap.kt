@@ -32,7 +32,10 @@ fun resolveRemoteFolders(store: Store): Map<RemoteFolder, String> {
             return
         }
         val byName = listed.firstOrNull { folder ->
-            names.any { candidate -> folder.fullName.equals(candidate, ignoreCase = true) }
+            names.any { candidate ->
+                folder.fullName.equals(candidate, ignoreCase = true) ||
+                    folder.name.equals(candidate, ignoreCase = true)
+            }
         }
         if (byName != null) result[target] = byName.fullName
     }
@@ -59,7 +62,8 @@ fun resolveRemoteFolders(store: Store): Map<RemoteFolder, String> {
 internal fun folderSpecialUses(folder: Folder): Array<String> {
     return try {
         (folder as? IMAPFolder)?.attributes ?: emptyArray()
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        Log.w("AinsmailSync", "folder_attributes ${error.javaClass.simpleName}: ${error.message}")
         emptyArray()
     }
 }

@@ -27,6 +27,11 @@ private data class WindowSync(
     val budgetExhausted: Boolean,
 )
 
+private enum class SyncWindow {
+    Recent,
+    History,
+}
+
 /**
  * 首次同步：先各夹最近 7 天信头，再按全局 50 封 / 30 天补历史。
  * 失败不清库。网络与解析都在 [io]。
@@ -37,6 +42,12 @@ class MailFirstSync(
     private val io: CoroutineDispatcher,
 ) {
     private val mutex = Mutex()
+
+    /** 与 [syncAll] 同一把锁。进行中的首拉先放开锁，再删，避免旧连接把信写回来。 */
+    suspend fun forgetAccounts(accountIds: List<String>) {
+        if (accountIds.isEmpty()) return
+        mutex.withLock { store.deleteAccounts(accountIds) }
+    }
 
     suspend fun syncAll(accountIds: List<String>): List<FirstSyncOutcome> = mutex.withLock {
         withContext(io) {
@@ -52,9 +63,7 @@ class MailFirstSync(
                     sinceEpochMs = recentStart,
                     untilEpochMs = null,
                     budget = null,
-                    alreadyDone = { it?.recentSyncDone == true },
-                    recentDone = { true },
-                    historyDone = { it?.historySyncDone == true },
+                    window = SyncWindow.Recent,
                 )
                 outcomes += recent.outcome
                 if (recent.outcome is FirstSyncOutcome.Ok) recentOk += accountId
@@ -77,9 +86,7 @@ class MailFirstSync(
                     sinceEpochMs = historyStart,
                     untilEpochMs = recentStart - 1,
                     budget = budget,
-                    alreadyDone = { it?.historySyncDone == true },
-                    recentDone = { it?.recentSyncDone == true },
-                    historyDone = { true },
+                    window = SyncWindow.History,
                 )
                 outcomes += history.outcome
                 if (history.outcome is FirstSyncOutcome.Ok && history.budgetExhausted) {
@@ -96,9 +103,7 @@ class MailFirstSync(
         sinceEpochMs: Long,
         untilEpochMs: Long?,
         budget: Int?,
-        alreadyDone: (FolderSyncCursorEntity?) -> Boolean,
-        recentDone: (FolderSyncCursorEntity?) -> Boolean,
-        historyDone: (FolderSyncCursorEntity?) -> Boolean,
+        window: SyncWindow,
     ): WindowSync {
         val credentials = book.credentialsFor(accountId)
             ?: return WindowSync(FirstSyncOutcome.Failed(accountId, "missing_credentials"), false)
@@ -112,7 +117,7 @@ class MailFirstSync(
                     break
                 }
                 val cursor = store.cursor(accountId, folder.name)
-                if (alreadyDone(cursor)) continue
+                if (cursor.isDone(window)) continue
                 val fetched = fetchHeadersSince(
                     store = imap,
                     folderPath = path,
@@ -120,14 +125,15 @@ class MailFirstSync(
                     untilEpochMs = untilEpochMs,
                     limit = remaining,
                 )
+                val (recentDone, historyDone) = cursor.doneFlags(window)
                 saveFetched(
                     accountId = accountId,
                     folder = folder,
                     path = path,
                     fetched = fetched,
                     cursor = cursor,
-                    recentDone = recentDone(cursor),
-                    historyDone = historyDone(cursor),
+                    recentDone = recentDone,
+                    historyDone = historyDone,
                 )
                 if (remaining != null) remaining -= fetched.headers.size
             }
@@ -207,4 +213,15 @@ class MailFirstSync(
         const val TAG = "AinsmailSync"
         const val DAY_MS = 24L * 60L * 60L * 1000L
     }
+}
+
+/** 当前这窗已经拉完就跳过。最近一窗不改历史完成位，历史一窗不改最近完成位。 */
+private fun FolderSyncCursorEntity?.isDone(window: SyncWindow): Boolean = when (window) {
+    SyncWindow.Recent -> this?.recentSyncDone == true
+    SyncWindow.History -> this?.historySyncDone == true
+}
+
+private fun FolderSyncCursorEntity?.doneFlags(window: SyncWindow): Pair<Boolean, Boolean> = when (window) {
+    SyncWindow.Recent -> true to (this?.historySyncDone == true)
+    SyncWindow.History -> (this?.recentSyncDone == true) to true
 }

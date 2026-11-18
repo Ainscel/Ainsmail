@@ -100,9 +100,11 @@ fun reduce(session: MailboxSession, intent: MailboxIntent, noticeId: Long): Redu
             if (session.mails == intent.mails) {
                 ReduceOutcome(session)
             } else {
-                val selected = session.selectedIds.filter { id -> intent.mails.any { it.id == id } }.toSet()
+                val ids = HashSet<String>(intent.mails.size)
+                for (mail in intent.mails) ids.add(mail.id)
+                val selected = session.selectedIds.filter { it in ids }.toSet()
                 val undo = session.undo?.takeIf { record ->
-                    record.placements.keys.all { id -> intent.mails.any { it.id == id } }
+                    record.placements.keys.all { it in ids }
                 }
                 ReduceOutcome(
                     session.copy(

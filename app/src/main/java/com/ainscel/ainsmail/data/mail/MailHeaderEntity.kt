@@ -55,22 +55,26 @@ data class FolderSyncCursorEntity(
     val historySyncDone: Boolean,
 )
 
-fun MailHeaderEntity.toMail(): Mail = Mail(
-    id = id,
-    accountId = accountId,
-    remoteFolder = RemoteFolder.valueOf(remoteFolder),
-    archived = archived,
-    locallyDeleted = locallyDeleted,
-    fromName = fromName.ifBlank { fromAddress.substringBefore('@').ifBlank { fromAddress } },
-    subject = subject,
-    preview = "",
-    body = "",
-    timeMillis = timeMillis,
-    unread = unread,
-    type = typeName?.let { runCatching { MailType.valueOf(it) }.getOrNull() },
-    tagNames = if (tagNamesCsv.isBlank()) {
-        emptyList()
-    } else {
-        tagNamesCsv.split('\u001f').filter { it.isNotBlank() }
-    },
-)
+/** 夹名对不上枚举时返回空，避免一行坏数据停掉整表订阅。 */
+fun MailHeaderEntity.toMail(): Mail? {
+    val folder = runCatching { RemoteFolder.valueOf(remoteFolder) }.getOrNull() ?: return null
+    return Mail(
+        id = id,
+        accountId = accountId,
+        remoteFolder = folder,
+        archived = archived,
+        locallyDeleted = locallyDeleted,
+        fromName = fromName.ifBlank { fromAddress.substringBefore('@').ifBlank { fromAddress } },
+        subject = subject,
+        preview = "",
+        body = "",
+        timeMillis = timeMillis,
+        unread = unread,
+        type = typeName?.let { runCatching { MailType.valueOf(it) }.getOrNull() },
+        tagNames = if (tagNamesCsv.isBlank()) {
+            emptyList()
+        } else {
+            tagNamesCsv.split('\u001f').filter { it.isNotBlank() }
+        },
+    )
+}

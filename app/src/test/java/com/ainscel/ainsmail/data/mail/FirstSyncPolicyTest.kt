@@ -34,4 +34,33 @@ class MailHeaderMappingTest {
         assertNull(serverFolderInMailId("no-colons"))
         assertNull(serverFolderInMailId("a:b"))
     }
+
+    @Test
+    fun knownFolderKeepsEnvelope() {
+        val mail = header(remoteFolder = "Inbox", subject = "你好").toMail()
+        assertEquals(RemoteFolder.Inbox, mail?.remoteFolder)
+        assertEquals("你好", mail?.subject)
+    }
+
+    @Test
+    fun unknownFolderIsSkipped() {
+        assertNull(header(remoteFolder = "Nope").toMail())
+    }
 }
+
+private fun header(remoteFolder: String, subject: String = "主题"): MailHeaderEntity = MailHeaderEntity(
+    id = "a:$remoteFolder:1",
+    accountId = "a",
+    remoteFolder = remoteFolder,
+    uid = 1L,
+    uidValidity = 1L,
+    fromName = "发件人",
+    fromAddress = "a@b.c",
+    toCsv = "",
+    ccCsv = "",
+    subject = subject,
+    timeMillis = 0L,
+    unread = true,
+    hasAttachment = false,
+    archived = false,
+)

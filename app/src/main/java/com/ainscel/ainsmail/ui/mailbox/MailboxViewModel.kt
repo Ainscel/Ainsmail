@@ -29,7 +29,7 @@ sealed interface MailboxSyncHint {
 /**
  * 没有保存过账号时用传入的样例。
  * 一旦加密文件里有账号，会话改成这些账号，邮件改订本地库 Flow，并触发首拉。
- * 本类不引用数据库或 IMAP 类型；观察、同步、回写由组合根传入。
+ * 本类不引用数据库或 IMAP 类型；观察、同步、回写、按账号清库由组合根传入。
  */
 class MailboxViewModel(
     private val sampleAccounts: List<Account>,
@@ -39,12 +39,16 @@ class MailboxViewModel(
     private val observeMails: () -> Flow<List<Mail>>,
     private val syncAccounts: suspend (List<String>) -> List<MailboxSyncHint>,
     private val persistMails: suspend (List<Mail>) -> Unit,
+    private val forgetAccounts: suspend (List<String>) -> Unit,
     private val io: CoroutineDispatcher,
 ) : ViewModel() {
     private var showingSamples = true
     private var syncedAccountIds: Set<String> = emptySet()
-    /** 已写库、库快照还没跟上的本机修改。避免 Flow 旧值把归档/已读冲掉。 */
-    private val pendingLocal = LinkedHashMap<String, Mail>()
+    /** 已写库、库快照还没跟上的三个本机标记。 */
+    private val pendingLocal = LinkedHashMap<String, LocalFlags>()
+    /** 清库还没结束时，不要另开一轮首拉。 */
+    private var forgetting = false
+    private var forgetGeneration = 0
     private var session = MailboxSession(
         accounts = sampleAccounts,
         mails = sampleMails,
@@ -121,32 +125,74 @@ class MailboxViewModel(
     }
 
     private fun applySaved(saved: List<Account>) {
-        if (saved.isEmpty()) {
-            if (!showingSamples) {
-                showingSamples = true
-                syncedAccountIds = emptySet()
-                pendingLocal.clear()
-                stopRealMailPipeline()
-                onIntent(MailboxIntent.RestoreSamples(sampleAccounts, sampleMails))
-            }
-        } else if (showingSamples) {
-            showingSamples = false
-            pendingLocal.clear()
-            onIntent(MailboxIntent.UseRealAccounts(saved))
-            startRealMailPipeline(saved.map { it.id })
+        val removed = if (showingSamples) {
+            emptyList()
         } else {
-            onIntent(MailboxIntent.ReplaceAccounts(saved))
-            val ids = saved.map { it.id }
-            if (ids.toSet() != syncedAccountIds) startRealMailPipeline(ids)
+            val nextIds = saved.map { it.id }.toSet()
+            session.accounts.map { it.id }.filter { it !in nextIds }
+        }
+        when {
+            saved.isEmpty() -> {
+                if (!showingSamples) {
+                    showingSamples = true
+                    syncedAccountIds = emptySet()
+                    pendingLocal.clear()
+                    stopRealMailPipeline()
+                    onIntent(MailboxIntent.RestoreSamples(sampleAccounts, sampleMails))
+                }
+            }
+            showingSamples -> {
+                showingSamples = false
+                pendingLocal.clear()
+                onIntent(MailboxIntent.UseRealAccounts(saved))
+                startRealMailPipeline(saved.map { it.id })
+            }
+            else -> {
+                onIntent(MailboxIntent.ReplaceAccounts(saved))
+                if (removed.isEmpty()) {
+                    val ids = saved.map { it.id }
+                    if (ids.toSet() != syncedAccountIds) startRealMailPipeline(ids)
+                }
+            }
+        }
+        if (removed.isNotEmpty()) forgetRemoved(removed, saved.map { it.id })
+    }
+
+    private fun forgetRemoved(removed: List<String>, nextIds: List<String>) {
+        val prefixes = removed.map { "$it:" }
+        pendingLocal.keys.removeAll { id -> prefixes.any { prefix -> id.startsWith(prefix) } }
+        val generation = ++forgetGeneration
+        forgetting = true
+        syncJob?.cancel()
+        syncedAccountIds = nextIds.toSet()
+        viewModelScope.launch {
+            try {
+                forgetAccounts(removed)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w("AinsmailSync", "forget_accounts ${error.javaClass.simpleName}: ${error.message}")
+            } finally {
+                if (generation == forgetGeneration) forgetting = false
+            }
+            if (generation == forgetGeneration && !showingSamples) {
+                startRealMailPipeline(session.accounts.map { it.id })
+            }
         }
     }
 
     private fun startRealMailPipeline(accountIds: List<String>) {
         syncedAccountIds = accountIds.toSet()
+        if (forgetting) return
         if (observeJob == null) {
             observeJob = viewModelScope.launch {
                 observeMails().collectLatest { mails ->
-                    onIntent(MailboxIntent.ReplaceMails(mergePending(pendingLocal, mails)))
+                    if (showingSamples) return@collectLatest
+                    onIntent(
+                        MailboxIntent.ReplaceMails(
+                            mergeSnapshot(pendingLocal, mails, session.mails),
+                        ),
+                    )
                 }
             }
         }
@@ -172,13 +218,17 @@ class MailboxViewModel(
 
     private fun persistLocal(previous: MailboxSession, next: MailboxSession) {
         if (showingSamples) return
-        val changed = next.mails.filter { mail -> previous.mails.find { it.id == mail.id } != mail }
+        val previousById = HashMap<String, Mail>(previous.mails.size)
+        for (mail in previous.mails) previousById.putIfAbsent(mail.id, mail)
+        val changed = ArrayList<Mail>()
+        for (mail in next.mails) {
+            if (previousById[mail.id] != mail) changed.add(mail)
+        }
         if (changed.isEmpty()) return
-        changed.forEach { pendingLocal[it.id] = it }
-        val snapshot = changed.toList()
+        for (mail in changed) pendingLocal[mail.id] = mail.localFlags()
         viewModelScope.launch(io) {
             try {
-                persistMails(snapshot)
+                persistMails(changed)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -218,6 +268,7 @@ class MailboxViewModel(
             observeMails: () -> Flow<List<Mail>>,
             syncAccounts: suspend (List<String>) -> List<MailboxSyncHint>,
             persistMails: suspend (List<Mail>) -> Unit,
+            forgetAccounts: suspend (List<String>) -> Unit,
             io: CoroutineDispatcher,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
@@ -231,6 +282,7 @@ class MailboxViewModel(
                         observeMails,
                         syncAccounts,
                         persistMails,
+                        forgetAccounts,
                         io,
                     ) as T
                 }
