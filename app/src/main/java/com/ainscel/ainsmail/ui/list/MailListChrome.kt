@@ -45,7 +45,7 @@ internal fun ListTopBar(
                 modifier = Modifier
                     .padding(start = 8.dp, end = 4.dp)
                     .clickable(onClick = onTitleClick)
-                    .zeroReflowFadeText(),
+                    .zeroReflowFadeText(fadeWidth = 28.dp),
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Clip,
