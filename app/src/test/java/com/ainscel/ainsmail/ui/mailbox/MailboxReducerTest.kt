@@ -353,6 +353,31 @@ class MailboxReducerTest {
     }
 
     @Test
+    fun accountBadgeRepeatsWhenSenderOrAccountChanges() {
+        val accounts = listOf(
+            Account("a1", "甲", "a@qq.com", Provider.Qq),
+            Account("a2", "乙", "b@qq.com", Provider.Qq),
+        )
+        val session = MailboxSession(
+            accounts = accounts,
+            mails = listOf(
+                mail("b-wang", accountId = "a2", fromName = "王五", timeMillis = 10L),
+                mail("b-li", accountId = "a2", fromName = "李四", timeMillis = 20L),
+                mail("a-li", accountId = "a1", fromName = "李四", timeMillis = 30L),
+                mail("a-zhang-old", accountId = "a1", fromName = "张三", timeMillis = 40L),
+                mail("a-zhang-new", accountId = "a1", fromName = "张三", timeMillis = 50L),
+            ),
+            catalog = TagCatalog(emptyList()),
+        )
+
+        val bySender = project(session, now = 0L, badgeStyle = AccountBadgeStyle.SameSender)
+        assertEquals(listOf("甲", null, "甲", "乙", "乙"), bySender.list.rows.map { it.accountName })
+
+        val byAccount = project(session, now = 0L, badgeStyle = AccountBadgeStyle.FirstOfRun)
+        assertEquals(listOf("甲", null, null, "乙", null), byAccount.list.rows.map { it.accountName })
+    }
+
+    @Test
     fun replaceMailsKeepsSelectionThatStillExists() {
         val session = session(mail("a"), mail("b")).selecting("a", "gone")
         val next = reduce(
@@ -391,12 +416,13 @@ private fun mail(
     accountId: String = "a1",
     unread: Boolean = true,
     timeMillis: Long = 0L,
+    fromName: String = "发件人",
 ): Mail = Mail(
     id = id,
     accountId = accountId,
     remoteFolder = remoteFolder,
     archived = archived,
-    fromName = "发件人",
+    fromName = fromName,
     subject = id,
     preview = "",
     body = "占位正文",

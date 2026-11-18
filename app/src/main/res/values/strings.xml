@@ -99,9 +99,10 @@
     <string name="settings_back">返回</string>
     <string name="settings_display">显示</string>
     <string name="settings_account_badge">收件人头像显示方式</string>
-    <string name="settings_account_badge_hint">只在全部邮箱里生效。右下角的小圆是收件账户，连续几封来自同一个账户时可以只留在第一封。</string>
+    <string name="settings_account_badge_hint">只在全部邮箱里生效。右下角的小圆是收件账户。</string>
     <string name="settings_account_badge_every">每封都显示</string>
-    <string name="settings_account_badge_first">连续同一账户只在第一封显示</string>
+    <string name="settings_account_badge_first">相同账户连续邮件合并显示</string>
+    <string name="settings_account_badge_sender">相同账户连续相同寄件人合并展示</string>
     <string name="settings_notifications">通知</string>
     <string name="settings_privacy">隐私</string>
     <string name="settings_secrets">密钥</string>

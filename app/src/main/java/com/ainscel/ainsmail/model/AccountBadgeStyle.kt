@@ -7,4 +7,7 @@ enum class AccountBadgeStyle {
 
     /** 连续同一收件账户只在第一行画。中间换成别的账户后，再画一次。 */
     FirstOfRun,
+
+    /** 同一收件账户里，连续相同寄件人只在第一行画。寄件人或账户变了都再画。 */
+    SameSender,
 }

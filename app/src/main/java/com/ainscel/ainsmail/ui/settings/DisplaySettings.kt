@@ -59,6 +59,7 @@ fun DisplaySettings(
                     )
                     Text(
                         text = stringResource(option.label),
+                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -71,4 +72,5 @@ private val AccountBadgeStyle.label: Int
     get() = when (this) {
         AccountBadgeStyle.EveryRow -> R.string.settings_account_badge_every
         AccountBadgeStyle.FirstOfRun -> R.string.settings_account_badge_first
+        AccountBadgeStyle.SameSender -> R.string.settings_account_badge_sender
     }

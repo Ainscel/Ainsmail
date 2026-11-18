@@ -102,7 +102,6 @@ private fun scanRows(
     badgeStyle: AccountBadgeStyle,
 ): ScannedRows {
     val showAccount = session.scope is MailboxScope.All
-    val collapseBadge = showAccount && badgeStyle == AccountBadgeStyle.FirstOfRun
     val sectionMailIds = HashSet<String>()
     val visible = ArrayList<Mail>()
     for (mail in session.mails) {
@@ -116,10 +115,17 @@ private fun scanRows(
     for (account in session.accounts) accountsById.putIfAbsent(account.id, account)
     val rows = ArrayList<MailRowUi>(visible.size)
     var previousAccountId: String? = null
+    var previousFromName: String? = null
     for (mail in visible) {
-        val showBadge = showAccount && (!collapseBadge || mail.accountId != previousAccountId)
+        val showBadge = showAccount && when (badgeStyle) {
+            AccountBadgeStyle.EveryRow -> true
+            AccountBadgeStyle.FirstOfRun -> mail.accountId != previousAccountId
+            AccountBadgeStyle.SameSender ->
+                mail.accountId != previousAccountId || mail.fromName != previousFromName
+        }
         rows.add(toRow(session, mail, now, zone, showBadge, accountsById))
         previousAccountId = mail.accountId
+        previousFromName = mail.fromName
     }
     return ScannedRows(sectionMailIds, rows)
 }
