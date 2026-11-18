@@ -318,3 +318,20 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 比较用账号 id，放在列表投影里。行缓存换显示方式时整表重算，避免沿用上一份小圆。
 - `:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。未跑 `testDebugUnitTest`：工程路径含「项目」时测试类仍会 ClassNotFound。
 
+## 2026-11-18 21:10
+
+收件账户小圆增加第三种显示方式。未改任务勾选。
+
+- 「相同账户连续相同寄件人合并展示」：同一收件账户里，连续相同寄件人只在第一封画小圆。寄件人变了，或收件账户变了，都重新画。
+- 第二种的文案改成「相同账户连续邮件合并显示」。默认仍是每封都显示。寄件人按列表上的姓名比较。
+- `:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。未跑 `testDebugUnitTest`：工程路径含「项目」时测试类仍会 ClassNotFound。
+
+## 2026-11-18 21:40
+
+按 Task 2.2 审查收了保活退出和归档 UID。未改任务勾选。
+
+- IDLE 改到单独线程。离开前台或换板块时立刻打断，上一轮连接关掉之后才开始下一轮。槽上的阶段和文件夹对 abort 线程可见。
+- 后台同步不再因为一个已删除账号停掉后面的收件箱。已经同步过的范围不再先增量再 IDLE 各连一次。同一条连接只列一次文件夹。
+- 窗口外留下的归档和本机删除改用负 UID，避免新代际复用正 UID 时继承归档标记。
+- `:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。未跑 `testDebugUnitTest`：工程路径含「项目」时测试类仍会 ClassNotFound。
+

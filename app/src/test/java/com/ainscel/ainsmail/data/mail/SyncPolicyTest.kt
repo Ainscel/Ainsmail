@@ -82,7 +82,8 @@ class SyncPolicyTest {
         val result = reapplyPreserved(listOf(incoming), listOf(old.toPreserved()))
 
         assertFalse(result.synced.single().archived)
-        assertEquals(2L, result.kept.single().uid)
+        assertEquals(-2L, result.kept.single().uid)
+        assertEquals("a1:Inbox:-2", result.kept.single().id)
         assertTrue(result.kept.single().archived)
         assertTrue(result.kept.single().toMail()!!.inSection(Section.Archive))
     }

@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** 首拉结果里界面需要知道的部分。凭证和异常原文留在数据层。 */
 sealed interface MailboxSyncHint {
@@ -33,11 +35,10 @@ sealed interface MailboxSyncHint {
     data class Failed(override val accountId: String) : MailboxSyncHint
 }
 
-/** 首拉回调的结果。已经完成过的账号 [ranInitial] 为 false，打开应用时改走增量。 */
+/** 首拉结果。失败的账号不在 [readyIds] 里，这一轮不进入保活。 */
 data class InitialSyncResult(
     val hints: List<MailboxSyncHint>,
     val readyIds: List<String>,
-    val ranInitial: Boolean,
 )
 
 /**
@@ -52,7 +53,6 @@ class MailboxViewModel(
     private val book: AccountBook,
     private val observeMails: () -> Flow<List<Mail>>,
     private val syncAccounts: suspend (List<String>) -> InitialSyncResult,
-    private val refreshScope: suspend (List<String>, Section) -> List<MailboxSyncHint>,
     private val watchScope: suspend (List<String>, Section, (MailboxSyncHint) -> Unit) -> Unit,
     private val pushSeen: suspend (List<String>) -> Unit,
     private val persistMails: suspend (List<Mail>) -> Unit,
@@ -85,6 +85,8 @@ class MailboxViewModel(
     private val initial = project(session, initialNow, badgeStyle = badgeStyle)
     private var observeJob: Job? = null
     private var watchJob: Job? = null
+    /** 上一轮保活退出并关掉连接之后，下一轮才开始。 */
+    private val watchLock = Mutex()
 
     init {
         viewModelScope.launch {
@@ -268,27 +270,24 @@ class MailboxViewModel(
 
     private fun restartWatch() {
         watchJob?.cancel()
-        watchJob = null
-        if (showingSamples || forgetting || !foreground) return
-        val ids = scopeIds()
-        val section = session.section
         watchJob = viewModelScope.launch {
-            val unchecked = ids.filter { it !in initiallySynced }
-            var ranInitial = false
-            if (unchecked.isNotEmpty()) {
-                if (!online) return@launch
-                val result = syncAccounts(unchecked)
-                showHints(result.hints)
-                initiallySynced.addAll(result.readyIds)
-                ranInitial = result.ranInitial
-            }
-            if (!foreground || !online || showingSamples || !currentCoroutineContext().isActive) return@launch
-            val ready = ids.filter { it in initiallySynced }
-            if (ready.isEmpty()) return@launch
-            if (!ranInitial) showHints(refreshScope(ready, section))
-            if (!foreground || !currentCoroutineContext().isActive) return@launch
-            watchScope(ready, section) { hint ->
-                viewModelScope.launch { showHints(listOf(hint)) }
+            watchLock.withLock {
+                if (showingSamples || forgetting || !foreground) return@withLock
+                val ids = scopeIds()
+                val section = session.section
+                val unchecked = ids.filter { it !in initiallySynced }
+                if (unchecked.isNotEmpty()) {
+                    if (!online) return@withLock
+                    val result = syncAccounts(unchecked)
+                    showHints(result.hints)
+                    initiallySynced.addAll(result.readyIds)
+                }
+                if (!foreground || !online || showingSamples || !currentCoroutineContext().isActive) return@withLock
+                val ready = ids.filter { it in initiallySynced }
+                if (ready.isEmpty()) return@withLock
+                watchScope(ready, section) { hint ->
+                    viewModelScope.launch { showHints(listOf(hint)) }
+                }
             }
         }
     }
@@ -383,7 +382,6 @@ class MailboxViewModel(
             book: AccountBook,
             observeMails: () -> Flow<List<Mail>>,
             syncAccounts: suspend (List<String>) -> InitialSyncResult,
-            refreshScope: suspend (List<String>, Section) -> List<MailboxSyncHint>,
             watchScope: suspend (List<String>, Section, (MailboxSyncHint) -> Unit) -> Unit,
             pushSeen: suspend (List<String>) -> Unit,
             persistMails: suspend (List<Mail>) -> Unit,
@@ -401,7 +399,6 @@ class MailboxViewModel(
                         book,
                         observeMails,
                         syncAccounts,
-                        refreshScope,
                         watchScope,
                         pushSeen,
                         persistMails,

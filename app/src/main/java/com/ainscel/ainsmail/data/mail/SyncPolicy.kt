@@ -87,7 +87,7 @@ fun MailHeaderEntity.toPreserved(): PreservedLocal = PreservedLocal(
 
 /**
  * 新窗口里的信套回本机标记。
- * 窗口里没再出现、UID 也没被占用、并且归档或本机删除过的信留在 [RebuiltHeaders.kept]。
+ * 窗口里没再出现、UID 也没被占用、并且归档或本机删除过的信留在 [RebuiltHeaders.kept]，UID 改成负数。
  */
 fun reapplyPreserved(
     incoming: List<MailHeaderEntity>,
@@ -121,9 +121,20 @@ fun reapplyPreserved(
         if (item in used) continue
         if (!item.archived && !item.locallyDeleted) continue
         if (item.uid in usedUids) continue
-        kept.add(item.row)
+        kept.add(item.row.detachFromServerUid())
     }
     return RebuiltHeaders(synced = synced, kept = kept)
+}
+
+/**
+ * 窗口外留下的信不再占用正 UID。
+ * 新代际可能重新发出同一个数字，唯一索引会把归档标记套到另一封信上。
+ */
+fun MailHeaderEntity.detachFromServerUid(): MailHeaderEntity {
+    if (uid <= 0L) return this
+    val folder = runCatching { RemoteFolder.valueOf(remoteFolder) }.getOrNull() ?: return this
+    val localUid = -uid
+    return copy(id = mailId(accountId, folder, localUid), uid = localUid)
 }
 
 private fun leafOf(value: String): String =

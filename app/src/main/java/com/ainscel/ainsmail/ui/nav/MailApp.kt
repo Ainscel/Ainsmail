@@ -72,9 +72,6 @@ fun MailApp(modifier: Modifier = Modifier) {
             book = book,
             observeMails = mailStore::observeMails,
             syncAccounts = { ids -> initialSync(mailStore, firstSync, ids) },
-            refreshScope = { ids, section ->
-                liveSync.refresh(ids, section).mapNotNull { it.toHint() }
-            },
             watchScope = { ids, section, onHint ->
                 liveSync.watch(ids, section) { outcome ->
                     outcome.toHint()?.let(onHint)
@@ -245,13 +242,12 @@ private suspend fun initialSync(
     ids: List<String>,
 ): InitialSyncResult {
     val need = ids.filter { mailStore.needsInitialSync(it) }
-    if (need.isEmpty()) return InitialSyncResult(hints = emptyList(), readyIds = ids, ranInitial = false)
+    if (need.isEmpty()) return InitialSyncResult(hints = emptyList(), readyIds = ids)
     val hints = firstSync.syncAll(need).mapNotNull { it.toHint() }
     val failed = hints.map { it.accountId }.toSet()
     return InitialSyncResult(
         hints = hints,
         readyIds = ids.filter { it !in failed },
-        ranInitial = true,
     )
 }
 

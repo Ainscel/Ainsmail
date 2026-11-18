@@ -16,14 +16,18 @@ import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.security.AccountBook
 import jakarta.mail.Folder
 import jakarta.mail.Store
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.eclipse.angus.mail.imap.IMAPFolder
 
@@ -36,19 +40,13 @@ class MailLiveSync(
     private val store: MailLocalStore,
     private val io: CoroutineDispatcher,
 ) {
-    suspend fun refresh(accountIds: List<String>, section: Section): List<FirstSyncOutcome> {
-        val folder = syncFolder(section) ?: return emptyList()
-        return withContext(io) {
-            accountIds.map { accountId -> refreshAccount(accountId, folder, allowWindow = true) }
-        }
-    }
-
     /** 后台只补已经有游标的收件箱，不按日期重扫，也不拉别的夹。 */
     suspend fun syncInboxes(accountIds: List<String>) {
         if (MailSyncGate.foreground) return
         withContext(io) {
             for (accountId in accountIds) {
-                if (MailSyncGate.foreground || MailSyncGate.isDropped(accountId)) return@withContext
+                if (MailSyncGate.foreground) return@withContext
+                if (MailSyncGate.isDropped(accountId)) continue
                 val cursor = store.cursor(accountId, RemoteFolder.Inbox.name) ?: continue
                 if (!cursor.recentSyncDone) continue
                 refreshAccount(accountId, RemoteFolder.Inbox, allowWindow = false)
@@ -89,7 +87,7 @@ class MailLiveSync(
         return MailSyncGate.withAccount(accountId) {
             if (MailSyncGate.isDropped(accountId)) return@withAccount FirstSyncOutcome.Ok
             withStore(accountId) { imap ->
-                pull(accountId, folder, imap, allowWindow, openFolder = null)
+                pull(accountId, folder, imap, allowWindow, openFolder = null, FolderPathCache(imap))
             }
         }
     }
@@ -110,15 +108,14 @@ class MailLiveSync(
         onHint: (FirstSyncOutcome) -> Unit,
     ) {
         val slot = MailSyncGate.slot(accountId)
-        currentCoroutineContext()[Job]?.invokeOnCompletion { MailSyncGate.requestAbort(accountId) }
         var imap: Store? = null
         var idleFolder: IMAPFolder? = null
+        var paths: FolderPathCache? = null
         try {
             while (currentCoroutineContext().isActive && !MailSyncGate.isDropped(accountId)) {
-                slot.lock.lock()
                 var idling = false
                 var poll = false
-                try {
+                slot.lock.withLock {
                     if (MailSyncGate.isDropped(accountId)) return
                     val link = ensureStore(imap, accountId)
                     when (link) {
@@ -126,15 +123,20 @@ class MailLiveSync(
                             onHint(link.outcome)
                             closeStore(accountId, imap)
                             imap = null
+                            paths = null
                             if (link.outcome is FirstSyncOutcome.NeedsReauth) return
                             poll = true
                         }
                         is StoreLink.Open -> {
-                            imap = link.store
-                            val outcome = pull(accountId, folder, link.store, allowWindow = true, idleFolder)
+                            if (imap !== link.store) {
+                                imap = link.store
+                                paths = FolderPathCache(link.store)
+                            }
+                            val cache = paths ?: FolderPathCache(link.store).also { paths = it }
+                            val outcome = pull(accountId, folder, link.store, allowWindow = true, idleFolder, cache)
                             if (outcome !is FirstSyncOutcome.Ok) onHint(outcome)
                             if (outcome is FirstSyncOutcome.NeedsReauth) return
-                            val path = resolveRemoteFolders(link.store)[folder]
+                            val path = cache.path(folder)
                             val next = path?.let { link.store.getFolder(it) as? IMAPFolder }
                             if (next == null || !storeSupportsIdle(link.store)) {
                                 poll = true
@@ -146,42 +148,49 @@ class MailLiveSync(
                             }
                         }
                     }
-                } finally {
-                    slot.lock.unlock()
                 }
                 if (!currentCoroutineContext().isActive || MailSyncGate.isDropped(accountId)) break
                 if (poll) {
                     closeStore(accountId, imap)
                     imap = null
+                    paths = null
                     idleFolder = null
                     delay(SYNC_POLL_MS)
                     continue
                 }
                 if (!idling) continue
+                val waiting = idleFolder
+                if (waiting == null) continue
                 try {
-                    idleFolder?.idle()
+                    awaitIdle(accountId, waiting)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
                     Log.w(TAG, "idle account=$accountId ${error.javaClass.simpleName}: ${error.message}")
                     poll = true
                 } finally {
-                    slot.lock.lock()
-                    MailSyncGate.markFree(slot)
-                    slot.lock.unlock()
+                    releaseIdle(slot)
                 }
                 if (poll) {
                     closeStore(accountId, imap)
                     imap = null
+                    paths = null
                     idleFolder = null
                     delay(SYNC_POLL_MS)
                 }
             }
         } finally {
-            slot.lock.lock()
-            MailSyncGate.markFree(slot)
-            slot.lock.unlock()
-            closeStore(accountId, imap)
+            withContext(NonCancellable) {
+                releaseIdle(slot)
+                closeStore(accountId, imap)
+            }
+        }
+    }
+
+    /** 取消已经发生时仍要放开槽，否则下一轮保活会盖住这条连接。 */
+    private suspend fun releaseIdle(slot: AccountSlot) {
+        withContext(NonCancellable) {
+            slot.lock.withLock { MailSyncGate.markFree(slot) }
         }
     }
 
@@ -191,9 +200,10 @@ class MailLiveSync(
         imap: Store,
         allowWindow: Boolean,
         openFolder: Folder?,
+        paths: FolderPathCache,
     ): FirstSyncOutcome {
         if (MailSyncGate.isDropped(accountId)) return FirstSyncOutcome.Ok
-        val path = resolveRemoteFolders(imap)[folder] ?: return FirstSyncOutcome.Ok
+        val path = paths.path(folder) ?: return FirstSyncOutcome.Ok
         val cursor = store.cursor(accountId, folder.name)
         if (cursor != null && cursor.recentSyncDone) {
             val probed = readNew(openFolder, imap, path, cursor.highestUid)
@@ -215,6 +225,30 @@ class MailLiveSync(
         fillWindow(accountId, folder, path, imap)
         pushSeenOn(imap, accountId, openFolder = null, openFolderName = null)
         return FirstSyncOutcome.Ok
+    }
+
+    /**
+     * 在单独线程上等待 IDLE。取消时立刻打断，不等这条阻塞调用自己结束。
+     * 这样 IO 调度器也不会被一次最长约半小时的等待占住。
+     */
+    private suspend fun awaitIdle(accountId: String, folder: IMAPFolder) {
+        suspendCancellableCoroutine { cont ->
+            cont.invokeOnCancellation { MailSyncGate.requestAbort(accountId) }
+            if (!cont.isActive) return@suspendCancellableCoroutine
+            Thread {
+                val result = runCatching { folder.idle() }
+                if (!cont.isActive) return@Thread
+                try {
+                    val error = result.exceptionOrNull()
+                    if (error == null) cont.resume(Unit) else cont.resumeWithException(error)
+                } catch (closed: IllegalStateException) {
+                    // 取消和 idle 返回撞在一起时，协程已经结束。
+                }
+            }.apply {
+                isDaemon = true
+                name = "ainsmail-idle"
+            }.start()
+        }
     }
 
     private fun readNew(openFolder: Folder?, imap: Store, path: String, highestUid: Long): FetchedHeaders {
@@ -429,6 +463,16 @@ class MailLiveSync(
     private sealed interface StoreLink {
         data class Open(val store: Store) : StoreLink
         data class Halt(val outcome: FirstSyncOutcome) : StoreLink
+    }
+
+    /** 同一条连接只列一次文件夹。换了 Store 就丢掉，下次重连再列。 */
+    private class FolderPathCache(private val imap: Store) {
+        private var paths: Map<RemoteFolder, String>? = null
+
+        fun path(folder: RemoteFolder): String? {
+            val known = paths ?: resolveRemoteFolders(imap).also { paths = it }
+            return known[folder]
+        }
     }
 
     private companion object {

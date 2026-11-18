@@ -17,8 +17,11 @@ internal enum class SlotPhase {
 
 internal class AccountSlot {
     val lock = Mutex()
-    var phase: SlotPhase = SlotPhase.Free
-    var folder: IMAPFolder? = null
+
+    /** abort 在另一条线程上读，不拿这把锁。先写文件夹，再写阶段，读到 Idling 时文件夹已经可见。 */
+    @Volatile var folder: IMAPFolder? = null
+
+    @Volatile var phase: SlotPhase = SlotPhase.Free
 }
 
 /**
@@ -48,8 +51,8 @@ object MailSyncGate {
 
     /** 调用方正拿着 [AccountSlot.lock]。 */
     internal fun markIdling(slot: AccountSlot, folder: IMAPFolder) {
-        slot.phase = SlotPhase.Idling
         slot.folder = folder
+        slot.phase = SlotPhase.Idling
     }
 
     /** 调用方正拿着 [AccountSlot.lock]。 */
@@ -89,17 +92,16 @@ object MailSyncGate {
 
     private suspend fun abortIdle(slot: AccountSlot, folder: IMAPFolder?) {
         val deadline = System.nanoTime() + ABORT_WAIT_NS
-        while (System.nanoTime() < deadline && slot.phase == SlotPhase.Idling) {
+        while (System.nanoTime() < deadline && slot.phase == SlotPhase.Idling && currentCoroutineContext().isActive) {
             if (folder != null && imapIdleWaiting(folder)) {
                 runCatching { folder.doCommand { null } }
-                break
             }
+            if (slot.phase != SlotPhase.Idling) return
             delay(ABORT_POLL_MS)
         }
-        if (slot.phase == SlotPhase.Idling) {
-            runCatching { folder?.doCommand { null } }
-        }
         while (slot.phase == SlotPhase.Idling && currentCoroutineContext().isActive) {
+            runCatching { folder?.doCommand { null } }
+            if (slot.phase != SlotPhase.Idling) return
             delay(ABORT_POLL_MS)
         }
     }
@@ -108,17 +110,26 @@ object MailSyncGate {
 private const val ABORT_WAIT_NS = 5_000_000_000L
 private const val ABORT_POLL_MS = 10L
 
+/**
+ * 等到 IDLE 真正开始再打断，并且在阶段变回 [SlotPhase.Free] 之前继续打。
+ * 只打一次就返回的话，poke 可能落在 [IMAPFolder.idle] 进入等待之前，连接会一直挂着。
+ */
 private fun abortBlocking(slot: AccountSlot) {
-    val deadline = System.nanoTime() + ABORT_WAIT_NS
-    while (System.nanoTime() < deadline && slot.phase == SlotPhase.Idling) {
+    val started = System.nanoTime()
+    while (slot.phase == SlotPhase.Idling) {
         val folder = slot.folder
-        if (folder != null && imapIdleWaiting(folder)) {
+        val waiting = folder != null && imapIdleWaiting(folder)
+        val overdue = System.nanoTime() - started >= ABORT_WAIT_NS
+        if (folder != null && (waiting || overdue)) {
             runCatching { folder.doCommand { null } }
+        }
+        if (slot.phase != SlotPhase.Idling) return
+        try {
+            Thread.sleep(ABORT_POLL_MS)
+        } catch (interrupted: InterruptedException) {
             return
         }
-        Thread.sleep(ABORT_POLL_MS)
     }
-    runCatching { slot.folder?.doCommand { null } }
 }
 
 /** 给忘记账号用：先停掉 IDLE，再排到这条账号的锁后面。 */
