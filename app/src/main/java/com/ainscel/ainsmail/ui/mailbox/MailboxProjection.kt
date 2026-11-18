@@ -17,16 +17,16 @@ data class MailboxProjection(
     val list: MailboxList,
 )
 
-/** 行内容没变时沿用上一份。勾选不在里面。 */
+/** 条目内容没变时沿用上一份。勾选不在里面。 */
 class ListReuse(
-    val rows: List<MailRowUi>,
+    val entries: List<MailListEntry>,
     val sectionMailIds: Set<String>,
     val tagGroups: List<TagGroupUi>,
 )
 
 /**
- * 同一分钟里，信件、目录、账号、范围、板块和筛选都没变，行就可以复用。
- * 时间文字只跟「现在」是否还在同一分钟有关，勾选不算。
+ * 同一分钟里，信件、目录、账号、范围、板块和筛选都没变，列表条目就可以复用。
+ * 行上的时间文字和时间分隔都只跟「现在」是否还在同一分钟有关，勾选不算。
  */
 fun rowsReusable(
     previous: MailboxSession,
@@ -55,18 +55,19 @@ fun project(
     previousAccounts: List<AccountUi> = emptyList(),
     reuse: ListReuse? = null,
     badgeStyle: AccountBadgeStyle = AccountBadgeStyle.EveryRow,
+    zone: ZoneId = ZoneId.systemDefault(),
 ): MailboxProjection {
     val sectionMailIds: Set<String>
-    val rows: List<MailRowUi>
+    val entries: List<MailListEntry>
     val groups: List<TagGroupUi>
     if (reuse != null) {
         sectionMailIds = reuse.sectionMailIds
-        rows = reuse.rows
+        entries = reuse.entries
         groups = reuse.tagGroups
     } else {
-        val built = scanRows(session, now, badgeStyle)
+        val built = scanRows(session, now, badgeStyle, zone)
         sectionMailIds = built.sectionMailIds
-        rows = built.rows
+        entries = built.entries
         groups = tagGroups(session)
     }
     return MailboxProjection(
@@ -85,21 +86,22 @@ fun project(
             multiSelect = session.multiSelect,
             selectedIds = session.selectedIds,
             tagGroups = groups,
-            rows = rows,
+            entries = entries,
         ),
     )
 }
 
 private class ScannedRows(
     val sectionMailIds: Set<String>,
-    val rows: List<MailRowUi>,
+    val entries: List<MailListEntry>,
 )
 
-/** 全部邮件只扫一遍：板块 id 和可见行一起收齐。 */
+/** 全部邮件只扫一遍：板块 id、时间分隔和可见行一起收齐。 */
 private fun scanRows(
     session: MailboxSession,
     now: Long,
     badgeStyle: AccountBadgeStyle,
+    zone: ZoneId,
 ): ScannedRows {
     val showAccount = session.scope is MailboxScope.All
     val sectionMailIds = HashSet<String>()
@@ -110,24 +112,29 @@ private fun scanRows(
         if (session.matchesFilters(mail)) visible.add(mail)
     }
     if (visible.size > 1) visible.sortByDescending { it.timeMillis }
-    val zone = ZoneId.systemDefault()
     val accountsById = HashMap<String, Account>(session.accounts.size)
     for (account in session.accounts) accountsById.putIfAbsent(account.id, account)
-    val rows = ArrayList<MailRowUi>(visible.size)
+    val entries = ArrayList<MailListEntry>(visible.size * 2)
+    var previousBucket: TimeBucket? = null
     var previousAccountId: String? = null
     var previousFromName: String? = null
     for (mail in visible) {
+        val bucket = timeBucket(mail.timeMillis, now, zone)
+        if (bucket != previousBucket) {
+            entries.add(MailListEntry.TimeDivider(bucket))
+            previousBucket = bucket
+        }
         val showBadge = showAccount && when (badgeStyle) {
             AccountBadgeStyle.EveryRow -> true
             AccountBadgeStyle.FirstOfRun -> mail.accountId != previousAccountId
             AccountBadgeStyle.SameSender ->
                 mail.accountId != previousAccountId || mail.fromName != previousFromName
         }
-        rows.add(toRow(session, mail, now, zone, showBadge, accountsById))
+        entries.add(MailListEntry.Row(toRow(session, mail, now, zone, showBadge, accountsById)))
         previousAccountId = mail.accountId
         previousFromName = mail.fromName
     }
-    return ScannedRows(sectionMailIds, rows)
+    return ScannedRows(sectionMailIds, entries)
 }
 
 /** 按导航给出的 id 取正文展示。打开哪封信不写进会话，这里也不读列表行。 */

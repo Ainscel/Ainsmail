@@ -353,7 +353,7 @@ class MailboxViewModel(
     private fun publish(previous: MailboxSession, restyleRows: Boolean = false) {
         val now = System.currentTimeMillis()
         val reuse = if (!restyleRows && rowsReusable(previous, session, rowMinute, now)) {
-            ListReuse(list.rows, chrome.sectionMailIds, list.tagGroups)
+            ListReuse(list.entries, chrome.sectionMailIds, list.tagGroups)
         } else {
             null
         }

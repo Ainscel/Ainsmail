@@ -34,7 +34,7 @@ data class MailboxPlace(
     val section: Section,
 )
 
-/** 只有列表页订阅。筛选和行放在一起，根界面不读。勾选不写进行里。 */
+/** 只有列表页订阅。筛选和条目放在一起，根界面不读。勾选不写进条目里。 */
 @Immutable
 data class MailboxList(
     val readFilter: ReadFilter,
@@ -43,9 +43,20 @@ data class MailboxList(
     val multiSelect: Boolean,
     val selectedIds: Set<String>,
     val tagGroups: List<TagGroupUi>,
-    val rows: List<MailRowUi>,
+    /** 邮件行和时间分隔交替出现。分隔不是 [MailRowUi]。 */
+    val entries: List<MailListEntry>,
 ) {
     val selectedCount: Int get() = selectedIds.size
+}
+
+/** 列表里的一种条目。分隔和邮件行分开，手势以后只绑 [Row]。 */
+@Immutable
+sealed interface MailListEntry {
+    @Immutable
+    data class Row(val row: MailRowUi) : MailListEntry
+
+    @Immutable
+    data class TimeDivider(val bucket: TimeBucket) : MailListEntry
 }
 
 @Immutable

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -27,9 +28,12 @@ import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.ui.mailbox.AddTagResult
+import com.ainscel.ainsmail.ui.mailbox.MailListEntry
 import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
 import com.ainscel.ainsmail.ui.mailbox.MailboxList
 import com.ainscel.ainsmail.ui.mailbox.MailboxPlace
+import com.ainscel.ainsmail.ui.mailbox.label
+import com.ainscel.ainsmail.ui.mailbox.listKey
 import com.ainscel.ainsmail.ui.mailbox.title
 import com.ainscel.ainsmail.ui.shell.MailChromeInset
 
@@ -46,6 +50,7 @@ class MailListActions(
 
 private const val RowReading = "reading"
 private const val RowSelecting = "selecting"
+private const val TimeDividerKind = "time"
 
 @Composable
 fun MailListPane(
@@ -181,7 +186,7 @@ private fun MailRows(
     LaunchedEffect(place.scope, place.section) {
         listState.scrollToItem(0)
     }
-    if (list.rows.isEmpty()) {
+    if (list.entries.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
                 text = stringResource(R.string.list_empty),
@@ -197,18 +202,45 @@ private fun MailRows(
             ),
         ) {
             items(
-                items = list.rows,
-                key = { it.id },
-                contentType = { if (list.multiSelect) RowSelecting else RowReading },
-            ) { row ->
-                MailRow(
-                    row = row,
-                    selected = row.id == openMailId,
-                    multiSelect = list.multiSelect,
-                    checked = row.id in list.selectedIds,
-                    actions = actions,
-                )
+                items = list.entries,
+                key = { entry ->
+                    when (entry) {
+                        is MailListEntry.Row -> entry.row.id
+                        is MailListEntry.TimeDivider -> entry.bucket.listKey()
+                    }
+                },
+                contentType = { entry ->
+                    when (entry) {
+                        is MailListEntry.TimeDivider -> TimeDividerKind
+                        is MailListEntry.Row -> if (list.multiSelect) RowSelecting else RowReading
+                    }
+                },
+            ) { entry ->
+                when (entry) {
+                    is MailListEntry.TimeDivider -> TimeDividerLine(entry.bucket.label())
+                    is MailListEntry.Row -> MailRow(
+                        row = entry.row,
+                        selected = entry.row.id == openMailId,
+                        multiSelect = list.multiSelect,
+                        checked = entry.row.id in list.selectedIds,
+                        actions = actions,
+                    )
+                }
             }
         }
+    }
+}
+
+/** 线在上，档位名在线下靠左。不吸顶，也不参与邮件行的测量和淡出。 */
+@Composable
+private fun TimeDividerLine(label: String) {
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Text(
+            text = label,
+            modifier = Modifier.padding(start = 12.dp, top = 6.dp, bottom = 2.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

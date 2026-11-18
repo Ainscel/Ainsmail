@@ -209,7 +209,7 @@ class MailboxReducerTest {
 
         assertEquals(first.chrome, second.chrome)
         assertSame(first.chrome.accounts, second.chrome.accounts)
-        assertEquals(false, second.list.rows.single().unread)
+        assertEquals(false, second.list.entries.mailRows().single().unread)
     }
 
     @Test
@@ -296,9 +296,9 @@ class MailboxReducerTest {
             toggled,
             now + 1_000,
             previousAccounts = first.chrome.accounts,
-            reuse = ListReuse(first.list.rows, first.chrome.sectionMailIds, first.list.tagGroups),
+            reuse = ListReuse(first.list.entries, first.chrome.sectionMailIds, first.list.tagGroups),
         )
-        assertSame(first.list.rows, second.list.rows)
+        assertSame(first.list.entries, second.list.entries)
         assertSame(first.chrome.sectionMailIds, second.chrome.sectionMailIds)
         assertSame(first.chrome.accounts, second.chrome.accounts)
         assertEquals(setOf("a", "b"), second.list.selectedIds)
@@ -335,13 +335,13 @@ class MailboxReducerTest {
         )
 
         val every = project(session, now = 0L, badgeStyle = AccountBadgeStyle.EveryRow)
-        assertEquals(listOf("甲", "甲", "乙", "乙"), every.list.rows.map { it.accountName })
+        assertEquals(listOf("甲", "甲", "乙", "乙"), every.list.entries.mailRows().map { it.accountName })
 
         val collapsed = project(session, now = 0L, badgeStyle = AccountBadgeStyle.FirstOfRun)
-        assertEquals(listOf("甲", null, "乙", null), collapsed.list.rows.map { it.accountName })
+        assertEquals(listOf("甲", null, "乙", null), collapsed.list.entries.mailRows().map { it.accountName })
         assertEquals(
             listOf("account/a1/avatar", null, null, null),
-            collapsed.list.rows.map { it.accountAvatar },
+            collapsed.list.entries.mailRows().map { it.accountAvatar },
         )
 
         val oneAccount = project(
@@ -349,7 +349,7 @@ class MailboxReducerTest {
             now = 0L,
             badgeStyle = AccountBadgeStyle.EveryRow,
         )
-        assertTrue(oneAccount.list.rows.all { it.accountName == null })
+        assertTrue(oneAccount.list.entries.mailRows().all { it.accountName == null })
     }
 
     @Test
@@ -371,10 +371,10 @@ class MailboxReducerTest {
         )
 
         val bySender = project(session, now = 0L, badgeStyle = AccountBadgeStyle.SameSender)
-        assertEquals(listOf("甲", null, "甲", "乙", "乙"), bySender.list.rows.map { it.accountName })
+        assertEquals(listOf("甲", null, "甲", "乙", "乙"), bySender.list.entries.mailRows().map { it.accountName })
 
         val byAccount = project(session, now = 0L, badgeStyle = AccountBadgeStyle.FirstOfRun)
-        assertEquals(listOf("甲", null, null, "乙", null), byAccount.list.rows.map { it.accountName })
+        assertEquals(listOf("甲", null, null, "乙", null), byAccount.list.entries.mailRows().map { it.accountName })
     }
 
     @Test
@@ -397,6 +397,9 @@ private fun MailboxSession.selecting(vararg ids: String): MailboxSession =
 private fun MailboxSession.mail(id: String): Mail = mails.first { it.id == id }
 
 private fun List<Mail>.ids(): Set<String> = map { it.id }.toSet()
+
+private fun List<MailListEntry>.mailRows(): List<MailRowUi> =
+    mapNotNull { (it as? MailListEntry.Row)?.row }
 
 private fun session(
     vararg mails: Mail,
