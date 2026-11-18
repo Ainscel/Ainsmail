@@ -260,3 +260,12 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 当前画法是右缘一条固定宽度的透明带，槽宽变化时不重录整行字形。整行离屏淡出不再使用。
 - 代码退回「去掉淡出」的对照提交，恢复右缘淡出。
 
+## 2026-11-18 09:14
+
+审阅 Task 1 账号（`security`、`ui/account`、`ui/settings`，以及 `MailApp` 订阅登录成功的接线），结论写入 `docs/issues/审阅记录.md`。未改业务代码。
+
+- 凭证仍留在加密文件，界面只见 `Account`，IMAP 仍走 `credentialsFor`。没有 P0。
+- 根界面订了整份 `LoginUiState`，登录步骤会重组 `MailApp`。取消 Gmail 被 `catch (Exception)` 收成 `Rejected`。
+- 设置 VM 里的账号列表只写不读，和 `savedAccounts` 各持一份。`ui.settings` 仍依赖 `ui.account` 的文案和选图。
+- P1 等单独点头再改。任务清单未勾。
+
