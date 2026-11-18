@@ -45,11 +45,7 @@ internal fun ListTopBar(
                 modifier = Modifier
                     .padding(start = 8.dp, end = 4.dp)
                     .clickable(onClick = onTitleClick)
-                    .zeroReflowFadeText(
-                        // 顶栏没有自己的底色，淡出盖住的是 Scaffold 的 surface。
-                        background = MaterialTheme.colorScheme.surface,
-                        fadeWidth = 28.dp,
-                    ),
+                    .zeroReflowFadeText(fadeWidth = 28.dp),
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Clip,
