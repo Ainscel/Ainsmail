@@ -9,6 +9,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.ainscel.ainsmail.R
+import com.ainscel.ainsmail.ui.accountErrorText
 
 /** 登录新邮箱。新建聚合仍留在外层。对话框步骤由 [AccountLoginViewModel] 持有。 */
 @Composable
@@ -28,8 +29,8 @@ internal fun AccountLoginLayer(
         login.onAuthorizationLaunched()
         authorizationLauncher.launch(request)
     }
-    LaunchedEffect(login.state.savedTick) {
-        val tick = login.state.savedTick
+    LaunchedEffect(login.saved.tick) {
+        val tick = login.saved.tick
         if (!login.claimSavedTick(tick)) return@LaunchedEffect
         snackbarHostState.showSnackbar(savedMessage)
     }
@@ -43,13 +44,15 @@ internal fun AccountLoginLayer(
     if (sheet == LoginSheet.Providers) {
         ProviderLoginDialog(
             gmailReady = login.state.gmailReady,
-            onQq = login::openQq,
+            onQq = { login.openQq() },
             onGmail = { login.startGmail(activity) },
             onDismiss = login::dismissSheet,
         )
     }
     if (sheet == LoginSheet.Qq) {
         QqLoginDialog(
+            initialAddress = login.state.qqAddress,
+            initialName = login.state.qqName,
             saving = login.state.saving,
             failure = login.state.failure,
             onSubmit = login::addQq,

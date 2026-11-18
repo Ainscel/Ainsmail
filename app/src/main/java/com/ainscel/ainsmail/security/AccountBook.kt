@@ -19,13 +19,15 @@ sealed interface AccountDirectory {
 }
 
 sealed interface AccountWrite {
-    data object Saved : AccountWrite
+    data class Saved(val id: String) : AccountWrite
     data object Duplicate : AccountWrite
     data object InvalidAddress : AccountWrite
     data object BlankCode : AccountWrite
     data object BlankName : AccountWrite
     data object Unreadable : AccountWrite
     data object BadImage : AccountWrite
+    /** 令牌为空等无法当成授权码缺失来提示的失败。 */
+    data object Rejected : AccountWrite
 }
 
 /**
@@ -102,15 +104,9 @@ class AccountBook(
         val code = authCode.trim()
         if (code.isEmpty()) return AccountWrite.BlankCode
         synchronized(lock) {
-            val existing = records.find { it.address.equals(email, ignoreCase = true) }
-            if (existing != null) {
-                if (existing.provider != AccountRecord.PROVIDER_QQ) return AccountWrite.Duplicate
-                val name = displayName.trim().ifBlank { existing.displayName }
-                records = records.map { record ->
-                    if (record.id != existing.id) record else record.copy(displayName = name, authCode = code)
-                }
-                return commit()
-            }
+            replaceSameAddress(email, AccountRecord.PROVIDER_QQ, displayName) { record, name ->
+                record.copy(displayName = name, authCode = code)
+            }?.let { return it }
         }
         return insert(
             providerKey = AccountRecord.PROVIDER_QQ,
@@ -133,25 +129,15 @@ class AccountBook(
     ): AccountWrite {
         val email = mailboxAddress(address) ?: return AccountWrite.InvalidAddress
         val token = accessToken.trim()
-        if (token.isEmpty()) return AccountWrite.BlankCode
+        if (token.isEmpty()) return AccountWrite.Rejected
         synchronized(lock) {
-            val existing = records.find { it.address.equals(email, ignoreCase = true) }
-            if (existing != null) {
-                if (existing.provider != AccountRecord.PROVIDER_GMAIL) return AccountWrite.Duplicate
-                val name = displayName.trim().ifBlank { existing.displayName }
-                records = records.map { record ->
-                    if (record.id != existing.id) {
-                        record
-                    } else {
-                        record.copy(
-                            displayName = name,
-                            accessToken = token,
-                            accessTokenExpiresAtEpochMs = expiresAtEpochMs,
-                        )
-                    }
-                }
-                return commit()
-            }
+            replaceSameAddress(email, AccountRecord.PROVIDER_GMAIL, displayName) { record, name ->
+                record.copy(
+                    displayName = name,
+                    accessToken = token,
+                    accessTokenExpiresAtEpochMs = expiresAtEpochMs,
+                )
+            }?.let { return it }
         }
         return insert(
             providerKey = AccountRecord.PROVIDER_GMAIL,
@@ -165,39 +151,26 @@ class AccountBook(
         )
     }
 
-    fun idForAddress(address: String): String? = synchronized(lock) {
-        val email = address.trim()
-        records.find { it.address.equals(email, ignoreCase = true) }?.id
-    }
-
     fun rename(id: String, displayName: String): AccountWrite = synchronized(lock) {
         val name = displayName.trim()
         if (name.isEmpty()) return AccountWrite.BlankName
         if (records.none { it.id == id }) return AccountWrite.Unreadable
-        records = records.map { if (it.id == id) it.copy(displayName = name) else it }
-        commit()
+        write(records.map { if (it.id == id) it.copy(displayName = name) else it }, id)
     }
 
     fun replaceAvatar(id: String, bytes: ByteArray): AccountWrite = synchronized(lock) {
         val current = records.find { it.id == id } ?: return AccountWrite.Unreadable
         val scaled = scaleAvatar(bytes) ?: return AccountWrite.BadImage
         val relative = writeAvatar(id, scaled) ?: return AccountWrite.BadImage
-        records = records.map { if (it.id == id) it.copy(avatarFile = relative) else it }
-        val written = commit()
+        val written = write(records.map { if (it.id == id) it.copy(avatarFile = relative) else it }, id)
         if (written is AccountWrite.Saved) deleteAvatar(current.avatarFile) else deleteAvatar(relative)
         written
     }
 
     fun remove(id: String): AccountWrite = synchronized(lock) {
-        val current = records.find { it.id == id } ?: return AccountWrite.Saved
-        val previous = records
-        records = records.filterNot { it.id == id }
-        val written = commit()
-        if (written is AccountWrite.Saved) {
-            deleteAvatar(current.avatarFile)
-        } else {
-            records = previous
-        }
+        val current = records.find { it.id == id } ?: return AccountWrite.Saved(id)
+        val written = write(records.filterNot { it.id == id }, id)
+        if (written is AccountWrite.Saved) deleteAvatar(current.avatarFile)
         written
     }
 
@@ -205,18 +178,39 @@ class AccountBook(
     fun updateGmailAccess(id: String, accessToken: String, expiresAtEpochMs: Long): AccountWrite =
         synchronized(lock) {
             val token = accessToken.trim()
-            if (token.isEmpty()) return AccountWrite.BlankCode
+            if (token.isEmpty()) return AccountWrite.Rejected
             val current = records.find { it.id == id } ?: return AccountWrite.Unreadable
             if (current.provider != AccountRecord.PROVIDER_GMAIL) return AccountWrite.Unreadable
-            records = records.map {
-                if (it.id == id) {
-                    it.copy(accessToken = token, accessTokenExpiresAtEpochMs = expiresAtEpochMs)
-                } else {
-                    it
-                }
-            }
-            commit()
+            write(
+                records.map {
+                    if (it.id == id) {
+                        it.copy(accessToken = token, accessTokenExpiresAtEpochMs = expiresAtEpochMs)
+                    } else {
+                        it
+                    }
+                },
+                id,
+            )
         }
+
+    /**
+     * 同地址则写回原记录。调用方须已持有 [lock]。
+     * 没有这条地址时返回 null，由调用方插入。
+     */
+    private fun replaceSameAddress(
+        address: String,
+        providerKey: String,
+        displayName: String,
+        copy: (AccountRecord, String) -> AccountRecord,
+    ): AccountWrite? {
+        val existing = records.find { it.address.equals(address, ignoreCase = true) } ?: return null
+        if (existing.provider != providerKey) return AccountWrite.Duplicate
+        val name = displayName.trim().ifBlank { existing.displayName }
+        val next = records.map { record ->
+            if (record.id != existing.id) record else copy(record, name)
+        }
+        return write(next, existing.id)
+    }
 
     private fun insert(
         providerKey: String,
@@ -238,29 +232,36 @@ class AccountBook(
         val id = UUID.randomUUID().toString()
         val relative = scaled?.let { writeAvatar(id, it) }
         if (avatarRequired && relative == null) return AccountWrite.BadImage
-        records = records + AccountRecord(
-            id = id,
-            provider = providerKey,
-            address = address,
-            displayName = name,
-            avatarFile = relative,
-            authCode = authCode,
-            accessToken = accessToken,
-            accessTokenExpiresAtEpochMs = accessTokenExpiresAtEpochMs,
+        val written = write(
+            records + AccountRecord(
+                id = id,
+                provider = providerKey,
+                address = address,
+                displayName = name,
+                avatarFile = relative,
+                authCode = authCode,
+                accessToken = accessToken,
+                accessTokenExpiresAtEpochMs = accessTokenExpiresAtEpochMs,
+            ),
+            id,
         )
-        val written = commit()
         if (written !is AccountWrite.Saved) deleteAvatar(relative)
         written
     }
 
-    private fun commit(): AccountWrite {
+    /** 调用方须已持有 [lock]。写失败时先回到改之前的记录，再按磁盘结果刷新。 */
+    private fun write(next: List<AccountRecord>, savedId: String): AccountWrite {
+        val previous = records
+        records = next
         return try {
             store.writeAccounts(records)
             publish()
-            AccountWrite.Saved
+            AccountWrite.Saved(savedId)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            records = previous
             throw cancelled
         } catch (error: Exception) {
+            records = previous
             LoginLog.e(
                 "account_commit",
                 "${error.javaClass.simpleName}: ${error.message}",

@@ -24,6 +24,7 @@ import com.ainscel.ainsmail.security.toGoogleSignInFailure
 import com.ainscel.ainsmail.ui.ShownTick
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.common.api.ApiException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,9 +46,16 @@ data class LoginUiState(
     val authorizationRequest: IntentSenderRequest? = null,
     val failure: AccountError? = null,
     val failureTick: Long = 0,
-    val savedTick: Long = 0,
-    /** 最近一次成功写入的账号。用来清掉过期标记。 */
-    val savedAccountId: String? = null,
+    /** 打开 QQ 框时带上的地址和显示名。表单草稿仍留在对话框里。 */
+    val qqAddress: String = "",
+    val qqName: String = "",
+)
+
+/** 最近一次成功写入。和 [LoginUiState] 分开，根界面只订这一份。 */
+@Immutable
+data class SavedLogin(
+    val tick: Long = 0,
+    val accountId: String? = null,
 )
 
 class AccountLoginViewModel(
@@ -57,6 +65,9 @@ class AccountLoginViewModel(
     private val io: CoroutineDispatcher,
 ) : ViewModel() {
     var state by mutableStateOf(LoginUiState())
+        private set
+
+    var saved by mutableStateOf(SavedLogin())
         private set
 
     private var gmailJob: Job? = null
@@ -74,8 +85,13 @@ class AccountLoginViewModel(
         refreshGmail()
     }
 
-    fun openQq() {
-        state = state.copy(sheet = LoginSheet.Qq, failure = null)
+    fun openQq(address: String = "", displayName: String = "") {
+        state = state.copy(
+            sheet = LoginSheet.Qq,
+            failure = null,
+            qqAddress = address,
+            qqName = displayName,
+        )
     }
 
     fun dismissSheet() {
@@ -101,23 +117,17 @@ class AccountLoginViewModel(
                     book.addQq(address, displayName, authCode, bytes)
                 }
             }
-            val savedId = if (written is AccountWrite.Saved) {
-                withContext(io) { book.idForAddress(address) }
-            } else {
-                null
-            }
-            state = if (written is AccountWrite.Saved) {
-                state.copy(
+            if (written is AccountWrite.Saved) {
+                noteSaved(written.id)
+                state = state.copy(
                     sheet = LoginSheet.None,
                     saving = false,
                     failure = null,
-                    savedTick = state.savedTick + 1,
-                    savedAccountId = savedId,
                 )
             } else {
-                val reason = written.toAccountError()
+                val reason = written.asError()
                 LoginLog.w("qq_save", "failed reason=$reason write=$written")
-                state.failed(reason)
+                state = state.failed(reason)
             }
         }
     }
@@ -153,6 +163,8 @@ class AccountLoginViewModel(
                 } else {
                     finishGmail(result)
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (api: ApiException) {
                 failApi("start_gmail_api", api)
             } catch (error: Exception) {
@@ -169,7 +181,6 @@ class AccountLoginViewModel(
     fun onAuthorizationResult(activity: Activity, activityResult: ActivityResult) {
         if (!gmailInFlight) {
             LoginLog.w("auth_result", "no in-flight login resultCode=${activityResult.resultCode}")
-            fail(AccountError.Rejected)
             return
         }
         gmailJob = viewModelScope.launch {
@@ -186,6 +197,8 @@ class AccountLoginViewModel(
                 }
                 val result = login.resultFromIntent(activity, activityResult.data)
                 finishGmail(result)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (api: ApiException) {
                 failApi("auth_result_api", api)
             } catch (error: Exception) {
@@ -217,36 +230,43 @@ class AccountLoginViewModel(
     }
 
     private suspend fun saveGmail(signed: GoogleSignIn.Ok) {
-        val written = withContext(io) {
-            book.addGmail(
-                address = signed.email,
-                displayName = signed.name,
-                accessToken = signed.accessToken,
-                expiresAtEpochMs = signed.expiresAtEpochMs,
-                avatar = signed.picture,
-            )
+        val held = arrayOfNulls<AccountWrite>(1)
+        try {
+            val written = withContext(io) {
+                book.addGmail(
+                    address = signed.email,
+                    displayName = signed.name,
+                    accessToken = signed.accessToken,
+                    expiresAtEpochMs = signed.expiresAtEpochMs,
+                    avatar = signed.picture,
+                ).also { held[0] = it }
+            }
+            applyGmailWrite(written)
+        } catch (cancelled: CancellationException) {
+            held[0]?.let(::applyGmailWrite)
+            throw cancelled
         }
-        val savedId = if (written is AccountWrite.Saved) {
-            withContext(io) { book.idForAddress(signed.email) }
-        } else {
-            null
-        }
+    }
+
+    private fun applyGmailWrite(written: AccountWrite) {
         gmailInFlight = false
-        state = if (written is AccountWrite.Saved) {
-            state.copy(
+        if (written is AccountWrite.Saved) {
+            noteSaved(written.id)
+            state = state.copy(
                 sheet = LoginSheet.None,
                 waitingForGoogle = false,
                 authorizationRequest = null,
                 failure = null,
-                savedTick = state.savedTick + 1,
-                savedAccountId = savedId,
             )
         } else {
-            val mapped = written.toAccountError()
-            val reason = if (mapped == AccountError.BlankCode) AccountError.Rejected else mapped
+            val reason = written.asError()
             LoginLog.w("gmail_save", "failed write=$written -> $reason")
-            state.failed(reason)
+            state = state.failed(reason)
         }
+    }
+
+    private fun noteSaved(id: String) {
+        saved = SavedLogin(tick = saved.tick + 1, accountId = id)
     }
 
     private fun failApi(step: String, api: ApiException) {
@@ -285,3 +305,6 @@ private fun LoginUiState.failed(reason: AccountError): LoginUiState = copy(
     failure = reason,
     failureTick = failureTick + 1,
 )
+
+private fun AccountWrite.asError(): AccountError =
+    toAccountError() ?: error("成功写入不能当作失败")

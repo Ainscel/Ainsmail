@@ -2,6 +2,7 @@ package com.ainscel.ainsmail.security
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,7 +18,8 @@ class ProviderCredentialsTest {
     fun accountWriteMapsToSharedError() {
         assertEquals(AccountError.Duplicate, AccountWrite.Duplicate.toAccountError())
         assertEquals(AccountError.BadImage, AccountWrite.BadImage.toAccountError())
-        assertEquals(AccountError.Rejected, AccountWrite.Saved.toAccountError())
+        assertEquals(AccountError.Rejected, AccountWrite.Rejected.toAccountError())
+        assertNull(AccountWrite.Saved("id").toAccountError())
     }
 
     @Test

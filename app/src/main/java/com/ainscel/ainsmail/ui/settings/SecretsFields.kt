@@ -6,15 +6,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
+import com.ainscel.ainsmail.ui.SecretVisibilityToggle
+import com.ainscel.ainsmail.ui.secretVisual
 
 /**
  * 密钥可以长按粘贴。
@@ -38,21 +37,9 @@ internal fun DeepSeekFields(
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
         label = { Text(stringResource(R.string.settings_deepseek_key)) },
         singleLine = true,
-        visualTransformation = if (state.revealKey) {
-            VisualTransformation.None
-        } else {
-            PasswordVisualTransformation()
-        },
+        visualTransformation = secretVisual(state.revealKey),
         keyboardOptions = SecretKeyboard,
-        trailingIcon = {
-            TextButton(onClick = { onEdit(SecretsEdit.ToggleKey) }) {
-                Text(
-                    stringResource(
-                        if (state.revealKey) R.string.settings_hide else R.string.settings_show,
-                    ),
-                )
-            }
-        },
+        trailingIcon = { SecretVisibilityToggle(revealed = state.revealKey, onToggle = { onEdit(SecretsEdit.ToggleKey) }) },
     )
     OutlinedTextField(
         value = state.model,

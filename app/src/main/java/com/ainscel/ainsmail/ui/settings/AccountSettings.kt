@@ -22,8 +22,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.model.Account
-import com.ainscel.ainsmail.ui.account.accountErrorText
-import com.ainscel.ainsmail.ui.account.rememberAccountImagePicker
+import com.ainscel.ainsmail.ui.accountErrorText
+import com.ainscel.ainsmail.ui.rememberAccountImagePicker
 
 @Composable
 internal fun AccountSettings(

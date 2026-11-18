@@ -17,14 +17,16 @@ enum class AccountError {
     BadImage,
 }
 
-fun AccountWrite.toAccountError(): AccountError = when (this) {
-    AccountWrite.Saved -> AccountError.Rejected
+/** 成功写入没有对应错误。调用方用 null 走成功分支。 */
+fun AccountWrite.toAccountError(): AccountError? = when (this) {
+    is AccountWrite.Saved -> null
     AccountWrite.Duplicate -> AccountError.Duplicate
     AccountWrite.InvalidAddress -> AccountError.InvalidAddress
     AccountWrite.BlankCode -> AccountError.BlankCode
     AccountWrite.BlankName -> AccountError.BlankName
     AccountWrite.Unreadable -> AccountError.Unreadable
     AccountWrite.BadImage -> AccountError.BadImage
+    AccountWrite.Rejected -> AccountError.Rejected
 }
 
 fun GoogleSignInFailure.toAccountError(): AccountError = when (this) {

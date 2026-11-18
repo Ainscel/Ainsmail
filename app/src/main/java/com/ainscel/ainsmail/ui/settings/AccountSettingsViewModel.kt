@@ -9,7 +9,6 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.AccountDirectory
 import com.ainscel.ainsmail.security.AccountError
@@ -25,7 +24,6 @@ import kotlinx.coroutines.withContext
 data class AccountSettingsUiState(
     val loaded: Boolean = false,
     val unreadable: Boolean = false,
-    val accounts: List<Account> = emptyList(),
     val failure: AccountError? = null,
 )
 
@@ -38,19 +36,21 @@ class AccountSettingsViewModel(
         private set
 
     init {
-        viewModelScope.launch(io) { book.load() }
+        showDirectory(book.directory.value)
         viewModelScope.launch {
-            book.directory.collect { directory ->
-                state = when (directory) {
-                    AccountDirectory.Loading -> state
-                    AccountDirectory.Unreadable -> state.copy(loaded = true, unreadable = true, accounts = emptyList())
-                    is AccountDirectory.Ready -> state.copy(
-                        loaded = true,
-                        unreadable = false,
-                        accounts = directory.accounts,
-                    )
-                }
-            }
+            book.directory.collect(::showDirectory)
+        }
+    }
+
+    private fun showDirectory(directory: AccountDirectory) {
+        state = when (directory) {
+            AccountDirectory.Loading -> state
+            AccountDirectory.Unreadable ->
+                if (state.loaded && state.unreadable) state
+                else state.copy(loaded = true, unreadable = true)
+            is AccountDirectory.Ready ->
+                if (state.loaded && !state.unreadable) state
+                else state.copy(loaded = true, unreadable = false)
         }
     }
 
@@ -79,11 +79,7 @@ class AccountSettingsViewModel(
     }
 
     private fun publish(written: AccountWrite) {
-        state = if (written is AccountWrite.Saved) {
-            state.copy(failure = null)
-        } else {
-            state.copy(failure = written.toAccountError())
-        }
+        state = state.copy(failure = written.toAccountError())
     }
 
     companion object {

@@ -1,4 +1,4 @@
-package com.ainscel.ainsmail.ui.account
+package com.ainscel.ainsmail.ui
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -9,9 +9,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 
-/** QQ 登录与设置换头像共用的相册选择入口。 */
+/** 登录与设置换头像共用的相册选择入口。 */
 @Composable
-fun rememberAccountImagePicker(onPicked: (Uri) -> Unit): () -> Unit {
+internal fun rememberAccountImagePicker(onPicked: (Uri) -> Unit): () -> Unit {
     val currentOnPicked by rememberUpdatedState(onPicked)
     val launcher = rememberLauncherForActivityResult(PickVisualMedia()) { uri ->
         if (uri != null) currentOnPicked(uri)

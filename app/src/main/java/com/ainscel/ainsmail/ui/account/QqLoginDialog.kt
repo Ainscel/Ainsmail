@@ -13,28 +13,33 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.model.defaultDisplayName
 import com.ainscel.ainsmail.security.AccountError
+import com.ainscel.ainsmail.ui.accountErrorText
+import com.ainscel.ainsmail.ui.rememberAccountImagePicker
+import com.ainscel.ainsmail.ui.secretVisual
+import com.ainscel.ainsmail.ui.SecretVisibilityToggle
 
 @Composable
 internal fun QqLoginDialog(
+    initialAddress: String,
+    initialName: String,
     saving: Boolean,
     failure: AccountError?,
     onSubmit: (address: String, name: String, code: String, avatar: Uri?) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var address by rememberSaveable { mutableStateOf("") }
-    var name by rememberSaveable { mutableStateOf("") }
-    var nameTouched by rememberSaveable { mutableStateOf(false) }
-    var code by rememberSaveable { mutableStateOf("") }
+    var address by rememberSaveable(initialAddress, initialName) { mutableStateOf(initialAddress) }
+    var name by rememberSaveable(initialAddress, initialName) { mutableStateOf(initialName) }
+    var nameTouched by rememberSaveable(initialAddress, initialName) { mutableStateOf(initialName.isNotEmpty()) }
+    var code by remember { mutableStateOf("") }
     var reveal by rememberSaveable { mutableStateOf(false) }
     var avatar by rememberSaveable { mutableStateOf<String?>(null) }
     val pickAvatar = rememberAccountImagePicker { uri -> avatar = uri.toString() }
@@ -117,13 +122,9 @@ private fun QqLoginFields(
             modifier = Modifier.fillMaxWidth(),
             label = { Text(stringResource(R.string.account_qq_code)) },
             singleLine = true,
-            visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
+            visualTransformation = secretVisual(reveal),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, autoCorrectEnabled = false),
-            trailingIcon = {
-                TextButton(onClick = onToggleCode) {
-                    Text(stringResource(if (reveal) R.string.settings_hide else R.string.settings_show))
-                }
-            },
+            trailingIcon = { SecretVisibilityToggle(revealed = reveal, onToggle = onToggleCode) },
         )
         TextButton(onClick = onPickAvatar) {
             Text(

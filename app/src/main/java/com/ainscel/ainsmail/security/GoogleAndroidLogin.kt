@@ -205,12 +205,22 @@ fun ApiException.toGoogleSignInFailure(): GoogleSignInFailure = when (statusCode
     else -> GoogleSignInFailure.Rejected
 }
 
-/** 把 Google Task 挂到协程上，取消时尽量摘掉监听。 */
+private class GoogleTaskCanceled : Exception("google task cancelled")
+
+/**
+ * 把 Google Task 挂到协程上。
+ * Play Services 的 Task 不能摘掉已注册的监听。协程已经取消时丢掉回调。
+ * 任务自己被取消时用普通异常抛出，避免和协程取消混在一起。
+ */
 suspend fun <T> com.google.android.gms.tasks.Task<T>.await(): T =
     suspendCancellableCoroutine { cont ->
-        addOnSuccessListener { value -> cont.resume(value) }
-        addOnFailureListener { error -> cont.resumeWithException(error) }
+        addOnSuccessListener { value ->
+            if (cont.isActive) cont.resume(value)
+        }
+        addOnFailureListener { error ->
+            if (cont.isActive) cont.resumeWithException(error)
+        }
         addOnCanceledListener {
-            cont.resumeWithException(CancellationException("google task cancelled"))
+            if (cont.isActive) cont.resumeWithException(GoogleTaskCanceled())
         }
     }

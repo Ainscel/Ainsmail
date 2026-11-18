@@ -96,9 +96,10 @@ fun MailApp(modifier: Modifier = Modifier) {
         hostState = snackbarHostState,
         onConsumed = { unavailable = null },
     )
-    LaunchedEffect(login.state.savedTick) {
-        val id = login.state.savedAccountId ?: return@LaunchedEffect
-        if (login.state.savedTick == 0L) return@LaunchedEffect
+    LaunchedEffect(login.saved.tick) {
+        val saved = login.saved
+        if (saved.tick == 0L) return@LaunchedEffect
+        val id = saved.accountId ?: return@LaunchedEffect
         mailbox.perform(MailboxIntent.ClearReauth(id))
     }
     LaunchedEffect(chrome.sectionMailIds) {
@@ -124,7 +125,7 @@ fun MailApp(modifier: Modifier = Modifier) {
                     onRelogin = { account ->
                         when (account.provider) {
                             Provider.Gmail -> (context as? Activity)?.let(login::startGmail)
-                            Provider.Qq -> login.openQq()
+                            Provider.Qq -> login.openQq(account.address, account.name)
                         }
                     },
                     backStack = backStack,
