@@ -20,7 +20,12 @@ class OverlayController {
     var obstructsBack by mutableStateOf(false)
         private set
 
+    /** 弹簧还在走。列表快照先别在这段时间里刷新。 */
+    var animating by mutableStateOf(false)
+        private set
+
     private var job: Job? = null
+    private var generation = 0
 
     fun open(scope: CoroutineScope) {
         animate(scope, 1f)
@@ -37,14 +42,20 @@ class OverlayController {
     }
 
     private fun animate(scope: CoroutineScope, target: Float) {
+        val ticket = ++generation
         job?.cancel()
         val start = progress
+        animating = true
         job = scope.launch {
-            Animatable(start).animateTo(
-                target,
-                spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMedium),
-            ) {
-                moveTo(value)
+            try {
+                Animatable(start).animateTo(
+                    target,
+                    spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMedium),
+                ) {
+                    moveTo(value)
+                }
+            } finally {
+                if (ticket == generation) animating = false
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.ainscel.ainsmail.data.imap
 
 import android.util.Log
+import com.ainscel.ainsmail.data.mail.isVendorCategoryFolder
 import com.ainscel.ainsmail.model.RemoteFolder
 import jakarta.mail.Folder
 import jakarta.mail.Store
@@ -20,6 +21,8 @@ fun resolveRemoteFolders(store: Store): Map<RemoteFolder, String> {
     } catch (error: Exception) {
         Log.w("AinsmailSync", "list_folders ${error.javaClass.simpleName}: ${error.message}")
         emptyArray()
+    }.filter { folder ->
+        !isVendorCategoryFolder(folder.fullName, folder.name)
     }
 
     fun pick(target: RemoteFolder, special: String, names: List<String>) {

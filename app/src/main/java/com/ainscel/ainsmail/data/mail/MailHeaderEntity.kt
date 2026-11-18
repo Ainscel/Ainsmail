@@ -37,6 +37,10 @@ data class MailHeaderEntity(
     val locallyDeleted: Boolean = false,
     val typeName: String? = null,
     val tagNamesCsv: String = "",
+    /** 信封里的 Message-ID。UIDVALIDITY 变了以后用来把本机标记套回新 UID。 */
+    val messageId: String = "",
+    /** 本机已读还没写成服务器的 \\Seen。同步冲突时不能覆盖。 */
+    val seenPending: Boolean = false,
 )
 
 @Entity(

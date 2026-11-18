@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [MailHeaderEntity::class, FolderSyncCursorEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class MailDatabase : RoomDatabase() {
@@ -25,7 +25,7 @@ abstract class MailDatabase : RoomDatabase() {
                     context.applicationContext,
                     MailDatabase::class.java,
                     "ainsmail-mail.db",
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
             }
         }
     }
@@ -57,5 +57,13 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
                 arrayOf(serverFolder, id),
             )
         }
+    }
+}
+
+/** 信封补上 Message-ID，并记下尚未回写的已读。旧行这两列都是空。 */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE mail_headers ADD COLUMN messageId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE mail_headers ADD COLUMN seenPending INTEGER NOT NULL DEFAULT 0")
     }
 }

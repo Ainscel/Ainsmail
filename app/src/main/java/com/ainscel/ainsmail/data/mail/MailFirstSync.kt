@@ -46,7 +46,15 @@ class MailFirstSync(
     /** 与 [syncAll] 同一把锁。进行中的首拉先放开锁，再删，避免旧连接把信写回来。 */
     suspend fun forgetAccounts(accountIds: List<String>) {
         if (accountIds.isEmpty()) return
-        mutex.withLock { store.deleteAccounts(accountIds) }
+        mutex.withLock {
+            accountIds.forEach { MailSyncGate.drop(it) }
+            try {
+                for (id in accountIds) MailSyncGate.slot(id).awaitTurn()
+                store.deleteAccounts(accountIds)
+            } finally {
+                accountIds.forEach { MailSyncGate.undrop(it) }
+            }
+        }
     }
 
     suspend fun syncAll(accountIds: List<String>): List<FirstSyncOutcome> = mutex.withLock {
@@ -108,10 +116,15 @@ class MailFirstSync(
         val credentials = book.credentialsFor(accountId)
             ?: return WindowSync(FirstSyncOutcome.Failed(accountId, "missing_credentials"), false)
         var exhausted = false
-        val outcome = withStore(accountId, credentials) { imap ->
+        val outcome = MailSyncGate.withAccount(accountId) {
+            if (MailSyncGate.isDropped(accountId)) {
+                return@withAccount FirstSyncOutcome.Ok
+            }
+            withStore(accountId, credentials) { imap ->
             val folders = resolveRemoteFolders(imap)
             var remaining = budget
             for ((folder, path) in folders) {
+                if (MailSyncGate.isDropped(accountId)) return@withStore FirstSyncOutcome.Ok
                 if (remaining != null && remaining <= 0) {
                     exhausted = true
                     break
@@ -138,6 +151,7 @@ class MailFirstSync(
                 if (remaining != null) remaining -= fetched.headers.size
             }
             FirstSyncOutcome.Ok
+            }
         }
         if (outcome !is FirstSyncOutcome.Ok) exhausted = false
         return WindowSync(outcome, exhausted)

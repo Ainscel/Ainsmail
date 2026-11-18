@@ -9,6 +9,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,12 +22,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.data.SampleAccounts
 import com.ainscel.ainsmail.data.mail.MailFirstSync
+import com.ainscel.ainsmail.data.mail.MailLiveSync
 import com.ainscel.ainsmail.data.mail.MailLocalStore
+import com.ainscel.ainsmail.data.mail.MailSyncGate
+import com.ainscel.ainsmail.data.mail.scheduleInboxSync
 import com.ainscel.ainsmail.data.sampleCatalog
 import com.ainscel.ainsmail.data.sampleMails
 import com.ainscel.ainsmail.model.MailboxScope
@@ -36,6 +43,7 @@ import com.ainscel.ainsmail.security.SecretStore
 import com.ainscel.ainsmail.ui.account.AccountLoginLayer
 import com.ainscel.ainsmail.ui.account.AccountLoginViewModel
 import com.ainscel.ainsmail.data.mail.FirstSyncOutcome
+import com.ainscel.ainsmail.ui.mailbox.InitialSyncResult
 import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
 import com.ainscel.ainsmail.ui.mailbox.MailboxSyncHint
 import com.ainscel.ainsmail.ui.mailbox.MailboxViewModel
@@ -53,22 +61,24 @@ fun MailApp(modifier: Modifier = Modifier) {
     val book = remember { AccountBook(appContext, secrets) }
     val mailStore = remember { MailLocalStore(appContext, Dispatchers.IO) }
     val firstSync = remember(book, mailStore) { MailFirstSync(book, mailStore, Dispatchers.IO) }
-    val mailboxFactory = remember(book, mailStore, firstSync) {
+    val liveSync = remember(book, mailStore) { MailLiveSync(book, mailStore, Dispatchers.IO) }
+    val mailboxFactory = remember(book, mailStore, firstSync, liveSync) {
         MailboxViewModel.factory(
             accounts = SampleAccounts,
             mails = sampleMails(System.currentTimeMillis()),
             catalog = sampleCatalog(),
             book = book,
             observeMails = mailStore::observeMails,
-            syncAccounts = { ids ->
-                firstSync.syncAll(ids).mapNotNull { outcome ->
-                    when (outcome) {
-                        FirstSyncOutcome.Ok -> null
-                        is FirstSyncOutcome.NeedsReauth -> MailboxSyncHint.NeedsReauth(outcome.accountId)
-                        is FirstSyncOutcome.Failed -> MailboxSyncHint.Failed
-                    }
+            syncAccounts = { ids -> initialSync(mailStore, firstSync, ids) },
+            refreshScope = { ids, section ->
+                liveSync.refresh(ids, section).mapNotNull { it.toHint() }
+            },
+            watchScope = { ids, section, onHint ->
+                liveSync.watch(ids, section) { outcome ->
+                    outcome.toHint()?.let(onHint)
                 }
             },
+            pushSeen = liveSync::pushSeen,
             persistMails = mailStore::persistLocalMails,
             forgetAccounts = firstSync::forgetAccounts,
             io = Dispatchers.IO,
@@ -85,6 +95,42 @@ fun MailApp(modifier: Modifier = Modifier) {
     var addDialog by rememberSaveable { mutableStateOf(false) }
     var unavailable by remember { mutableStateOf<UnavailableHint?>(null) }
     val splitFraction = rememberSplitFraction()
+    var scrolling by remember { mutableStateOf(false) }
+    var resizing by remember { mutableStateOf(false) }
+    val processLifecycle = remember { ProcessLifecycleOwner.get().lifecycle }
+
+    DisposableEffect(processLifecycle, mailbox) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    MailSyncGate.foreground = true
+                    mailbox.setForeground(true)
+                }
+                Lifecycle.Event.ON_STOP -> {
+                    MailSyncGate.foreground = false
+                    mailbox.setForeground(false)
+                }
+                else -> Unit
+            }
+        }
+        processLifecycle.addObserver(observer)
+        if (processLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            MailSyncGate.foreground = true
+            mailbox.setForeground(true)
+        }
+        onDispose {
+            processLifecycle.removeObserver(observer)
+            MailSyncGate.foreground = false
+            mailbox.setForeground(false)
+        }
+    }
+    LaunchedEffect(mailbox) {
+        appContext.onlineNetwork().collect { mailbox.setOnline(it) }
+    }
+    LaunchedEffect(Unit) { scheduleInboxSync(appContext) }
+    LaunchedEffect(scrolling, resizing, overlay.animating) {
+        mailbox.setSnapshotPaused(scrolling || resizing || overlay.animating)
+    }
 
     MailboxNoticeEffect(
         notice = chrome.notice,
@@ -115,7 +161,7 @@ fun MailApp(modifier: Modifier = Modifier) {
     ) { innerPadding ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(innerPadding)) {
             val wide = isWideWindow(maxWidth)
-            val strategy = rememberTwoPaneStrategy(wide, splitFraction)
+            val strategy = rememberTwoPaneStrategy(wide, splitFraction) { resizing = it }
             val panelWidth = minOf(300.dp, maxWidth * 0.88f)
             val panelWidthPx = with(LocalDensity.current) { panelWidth.toPx() }
             Box(Modifier.fillMaxSize()) {
@@ -137,6 +183,7 @@ fun MailApp(modifier: Modifier = Modifier) {
                         unavailable = UnavailableHint(kind, System.nanoTime())
                     },
                     onExit = { (context as? Activity)?.finish() },
+                    onScrollActive = { scrolling = it },
                 )
                 AccountOverlay(
                     progress = overlay::progress,
@@ -186,4 +233,26 @@ fun MailApp(modifier: Modifier = Modifier) {
         login = login,
         snackbarHostState = snackbarHostState,
     )
+}
+
+private suspend fun initialSync(
+    mailStore: MailLocalStore,
+    firstSync: MailFirstSync,
+    ids: List<String>,
+): InitialSyncResult {
+    val need = ids.filter { mailStore.needsInitialSync(it) }
+    if (need.isEmpty()) return InitialSyncResult(hints = emptyList(), readyIds = ids, ranInitial = false)
+    val hints = firstSync.syncAll(need).mapNotNull { it.toHint() }
+    val failed = hints.map { it.accountId }.toSet()
+    return InitialSyncResult(
+        hints = hints,
+        readyIds = ids.filter { it !in failed },
+        ranInitial = true,
+    )
+}
+
+private fun FirstSyncOutcome.toHint(): MailboxSyncHint? = when (this) {
+    FirstSyncOutcome.Ok -> null
+    is FirstSyncOutcome.NeedsReauth -> MailboxSyncHint.NeedsReauth(accountId)
+    is FirstSyncOutcome.Failed -> MailboxSyncHint.Failed(accountId)
 }

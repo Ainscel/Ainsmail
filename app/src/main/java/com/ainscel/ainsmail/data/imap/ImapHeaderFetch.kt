@@ -10,6 +10,8 @@ import jakarta.mail.internet.InternetAddress
 import jakarta.mail.search.AndTerm
 import jakarta.mail.search.ComparisonTerm
 import jakarta.mail.search.ReceivedDateTerm
+import com.ainscel.ainsmail.data.mail.nextUid
+import com.ainscel.ainsmail.data.mail.normalizeMessageId
 import java.util.Date
 
 /** IMAP 信封。不含账号、板块和本机标记，落库时再套上。 */
@@ -25,6 +27,8 @@ data class RemoteHeader(
     val unread: Boolean,
     /** 列表还没显示附件。首拉不取正文结构，这里保持 false。 */
     val hasAttachment: Boolean,
+    /** 尖括号已去掉。没有这封信的 Message-ID 时是空字符串。 */
+    val messageId: String = "",
 )
 
 data class FetchedHeaders(
@@ -66,15 +70,63 @@ fun fetchHeadersSince(
             found
         }
         if (chosen.isEmpty()) return FetchedHeaders(uidValidity = uidValidity, headers = emptyList())
-        mailFolder.fetch(chosen, envelopeProfile())
-        val headers = chosen.mapNotNull { message ->
-            val uid = uidFolder.getUID(message)
-            if (uid <= 0L) return@mapNotNull null
-            toHeader(uid, uidValidity, message)
-        }
-        return FetchedHeaders(uidValidity = uidValidity, headers = headers)
+        return readHeaders(mailFolder, uidFolder, uidValidity, chosen)
     } finally {
         if (mailFolder.isOpen) mailFolder.close(false)
+    }
+}
+
+/**
+ * 只取比 [highestUid] 更新的信头。没有新 UID 时不拉信封。
+ * 文件夹需已打开。调用方决定何时关闭，方便 IDLE 复用这条连接。
+ */
+fun readHeadersAfterUid(folder: Folder, highestUid: Long): FetchedHeaders {
+    val uidFolder = folder as? UIDFolder ?: return FetchedHeaders(uidValidity = 0L, headers = emptyList())
+    val uidValidity = uidFolder.uidValidity
+    if (folder.messageCount == 0) return FetchedHeaders(uidValidity = uidValidity, headers = emptyList())
+    val messages = uidFolder.getMessagesByUID(nextUid(highestUid), UIDFolder.LASTUID)
+    if (messages.isEmpty()) return FetchedHeaders(uidValidity = uidValidity, headers = emptyList())
+    return readHeaders(folder, uidFolder, uidValidity, messages)
+}
+
+/** 按 UID 打开文件夹，取新信头，然后关掉。不改服务器标志。 */
+fun fetchHeadersAfterUid(store: Store, folderPath: String, highestUid: Long): FetchedHeaders {
+    val mailFolder = store.getFolder(folderPath)
+    if (!mailFolder.exists()) return FetchedHeaders(uidValidity = 0L, headers = emptyList())
+    mailFolder.open(Folder.READ_ONLY)
+    return try {
+        readHeadersAfterUid(mailFolder, highestUid)
+    } finally {
+        if (mailFolder.isOpen) mailFolder.close(false)
+    }
+}
+
+/** 把这些 UID 标成 \\Seen。文件夹已打开时直接写，不再重开。 */
+fun markSeen(folder: Folder, uids: List<Long>) {
+    if (uids.isEmpty()) return
+    val uidFolder = folder as? UIDFolder ?: return
+    val openedHere = !folder.isOpen
+    if (openedHere) folder.open(Folder.READ_WRITE)
+    try {
+        if (folder.mode == Folder.READ_ONLY) return
+        val messages = uids.mapNotNull { uid -> uidFolder.getMessageByUID(uid) }.toTypedArray()
+        if (messages.isEmpty()) return
+        folder.setFlags(messages, Flags(Flags.Flag.SEEN), true)
+    } finally {
+        if (openedHere && folder.isOpen) folder.close(false)
+    }
+}
+
+/** 另开一条已读回写。不移动、不删除。 */
+fun storeSeen(store: Store, folderPath: String, uids: List<Long>) {
+    if (uids.isEmpty()) return
+    val folder = store.getFolder(folderPath)
+    if (!folder.exists()) return
+    folder.open(Folder.READ_WRITE)
+    try {
+        markSeen(folder, uids)
+    } finally {
+        if (folder.isOpen) folder.close(false)
     }
 }
 
@@ -95,10 +147,26 @@ private fun newestByUid(
         .toTypedArray()
 }
 
+private fun readHeaders(
+    folder: Folder,
+    uidFolder: UIDFolder,
+    uidValidity: Long,
+    messages: Array<Message>,
+): FetchedHeaders {
+    folder.fetch(messages, envelopeProfile())
+    val headers = messages.mapNotNull { message ->
+        val uid = uidFolder.getUID(message)
+        if (uid <= 0L) return@mapNotNull null
+        toHeader(uid, uidValidity, message)
+    }
+    return FetchedHeaders(uidValidity = uidValidity, headers = headers)
+}
+
 private fun envelopeProfile(): FetchProfile = FetchProfile().apply {
     add(FetchProfile.Item.ENVELOPE)
     add(FetchProfile.Item.FLAGS)
     add(UIDFolder.FetchProfileItem.UID)
+    add("Message-ID")
 }
 
 private fun toHeader(uid: Long, uidValidity: Long, message: Message): RemoteHeader {
@@ -114,6 +182,7 @@ private fun toHeader(uid: Long, uidValidity: Long, message: Message): RemoteHead
         timeMillis = messageTime(message),
         unread = !message.isSet(Flags.Flag.SEEN),
         hasAttachment = false,
+        messageId = normalizeMessageId(message.getHeader("Message-ID")?.firstOrNull()),
     )
 }
 

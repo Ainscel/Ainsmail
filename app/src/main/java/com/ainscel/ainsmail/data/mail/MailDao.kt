@@ -13,6 +13,7 @@ data class LocalMailWrite(
     val unread: Boolean,
     val archived: Boolean,
     val locallyDeleted: Boolean,
+    val seenPending: Boolean,
 )
 
 @Dao
@@ -28,11 +29,13 @@ interface MailDao {
         INSERT INTO mail_headers (
             id, accountId, remoteFolder, uid, uidValidity,
             fromName, fromAddress, toCsv, ccCsv, subject, timeMillis,
-            unread, hasAttachment, archived, locallyDeleted, typeName, tagNamesCsv
+            unread, hasAttachment, archived, locallyDeleted, typeName, tagNamesCsv,
+            messageId, seenPending
         ) VALUES (
             :id, :accountId, :remoteFolder, :uid, :uidValidity,
             :fromName, :fromAddress, :toCsv, :ccCsv, :subject, :timeMillis,
-            :unread, :hasAttachment, :archived, :locallyDeleted, :typeName, :tagNamesCsv
+            :unread, :hasAttachment, :archived, :locallyDeleted, :typeName, :tagNamesCsv,
+            :messageId, :seenPending
         )
         ON CONFLICT(id) DO UPDATE SET
             accountId = excluded.accountId,
@@ -45,7 +48,8 @@ interface MailDao {
             ccCsv = excluded.ccCsv,
             subject = excluded.subject,
             timeMillis = excluded.timeMillis,
-            hasAttachment = excluded.hasAttachment
+            hasAttachment = excluded.hasAttachment,
+            messageId = excluded.messageId
         """,
     )
     suspend fun upsertEnvelope(
@@ -66,6 +70,8 @@ interface MailDao {
         locallyDeleted: Boolean,
         typeName: String?,
         tagNamesCsv: String,
+        messageId: String,
+        seenPending: Boolean,
     )
 
     @Transaction
@@ -89,6 +95,8 @@ interface MailDao {
                 locallyDeleted = row.locallyDeleted,
                 typeName = row.typeName,
                 tagNamesCsv = row.tagNamesCsv,
+                messageId = row.messageId,
+                seenPending = row.seenPending,
             )
         }
     }
@@ -96,7 +104,8 @@ interface MailDao {
     @Query(
         """
         UPDATE mail_headers
-        SET unread = :unread, archived = :archived, locallyDeleted = :locallyDeleted
+        SET unread = :unread, archived = :archived, locallyDeleted = :locallyDeleted,
+            seenPending = :seenPending
         WHERE id = :id
         """,
     )
@@ -105,12 +114,19 @@ interface MailDao {
         unread: Boolean,
         archived: Boolean,
         locallyDeleted: Boolean,
+        seenPending: Boolean,
     )
 
     @Transaction
     suspend fun updateLocalFlags(rows: List<LocalMailWrite>) {
         for (row in rows) {
-            updateOneLocalFlags(row.id, row.unread, row.archived, row.locallyDeleted)
+            updateOneLocalFlags(
+                row.id,
+                row.unread,
+                row.archived,
+                row.locallyDeleted,
+                row.seenPending,
+            )
         }
     }
 
@@ -135,6 +151,49 @@ interface MailDao {
         """,
     )
     suspend fun markHistoryDone(accountIds: List<String>)
+
+    @Query("SELECT * FROM mail_headers WHERE id = :id LIMIT 1")
+    suspend fun findHeader(id: String): MailHeaderEntity?
+
+    @Query(
+        """
+        SELECT * FROM mail_headers
+        WHERE accountId = :accountId AND remoteFolder = :remoteFolder
+        """,
+    )
+    suspend fun headersInFolder(accountId: String, remoteFolder: String): List<MailHeaderEntity>
+
+    @Query(
+        """
+        DELETE FROM mail_headers
+        WHERE accountId = :accountId AND remoteFolder = :remoteFolder
+        """,
+    )
+    suspend fun deleteFolderHeaders(accountId: String, remoteFolder: String)
+
+    @Transaction
+    suspend fun replaceFolderHeaders(
+        accountId: String,
+        remoteFolder: String,
+        rows: List<MailHeaderEntity>,
+    ) {
+        deleteFolderHeaders(accountId, remoteFolder)
+        upsertHeadersPreservingLocal(rows)
+    }
+
+    @Query(
+        """
+        SELECT * FROM mail_headers
+        WHERE accountId = :accountId AND seenPending = 1
+        """,
+    )
+    suspend fun pendingSeen(accountId: String): List<MailHeaderEntity>
+
+    @Query("UPDATE mail_headers SET seenPending = 0 WHERE id IN (:ids)")
+    suspend fun clearSeenPending(ids: List<String>)
+
+    @Query("SELECT * FROM folder_sync_cursors WHERE accountId = :accountId")
+    suspend fun cursorsFor(accountId: String): List<FolderSyncCursorEntity>
 
     @Query("DELETE FROM mail_headers WHERE accountId IN (:accountIds)")
     suspend fun deleteHeaders(accountIds: List<String>)

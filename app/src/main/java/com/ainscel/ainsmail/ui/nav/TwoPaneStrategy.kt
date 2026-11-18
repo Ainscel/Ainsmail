@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.NavMetadataKey
@@ -36,6 +37,7 @@ enum class PrimaryEmpty {
 class TwoPaneStrategy(
     private val isWide: Boolean,
     private val preferredFraction: MutableFloatState,
+    private val onResizing: (Boolean) -> Unit,
 ) : SceneStrategy<NavKey> {
     override fun SceneStrategyScope<NavKey>.calculateScene(entries: List<NavEntry<NavKey>>): Scene<NavKey>? {
         if (!isWide) return null
@@ -50,6 +52,7 @@ class TwoPaneStrategy(
             primary = primary,
             secondary = secondary,
             preferredFraction = preferredFraction,
+            onResizing = onResizing,
         )
     }
 
@@ -72,9 +75,14 @@ class TwoPaneStrategy(
 }
 
 @Composable
-fun rememberTwoPaneStrategy(widthIsWide: Boolean, preferredFraction: MutableFloatState): TwoPaneStrategy {
+fun rememberTwoPaneStrategy(
+    widthIsWide: Boolean,
+    preferredFraction: MutableFloatState,
+    onResizing: (Boolean) -> Unit = {},
+): TwoPaneStrategy {
+    val current = rememberUpdatedState(onResizing)
     return remember(widthIsWide, preferredFraction) {
-        TwoPaneStrategy(widthIsWide, preferredFraction)
+        TwoPaneStrategy(widthIsWide, preferredFraction) { current.value(it) }
     }
 }
 
@@ -83,6 +91,7 @@ private data class TwoPaneScene(
     private val primary: NavEntry<NavKey>,
     private val secondary: NavEntry<NavKey>?,
     private val preferredFraction: MutableFloatState,
+    private val onResizing: (Boolean) -> Unit,
 ) : Scene<NavKey> {
     // 只认左栏。右栏换成另一封信或另一个栏目时，场景身份不变，整页不会被拆掉重画。
     override val key: Any = primary.contentKey
@@ -96,6 +105,7 @@ private data class TwoPaneScene(
         SplitLayout(
             preferredFraction = preferredFraction,
             rightOpen = secondary != null,
+            onResizing = onResizing,
         ) {
             list { primary.Content() }
             detail {

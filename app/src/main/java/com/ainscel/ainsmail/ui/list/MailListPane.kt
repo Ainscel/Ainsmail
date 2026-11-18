@@ -12,12 +12,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -51,6 +53,7 @@ fun MailListPane(
     list: MailboxList,
     openMailId: String?,
     actions: MailListActions,
+    onScrollActive: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -101,6 +104,7 @@ fun MailListPane(
                 list = list,
                 openMailId = openMailId,
                 actions = actions,
+                onScrollActive = onScrollActive,
             )
         }
         if (place.section == Section.Inbox) {
@@ -165,8 +169,15 @@ private fun MailRows(
     list: MailboxList,
     openMailId: String?,
     actions: MailListActions,
+    onScrollActive: (Boolean) -> Unit,
 ) {
     val listState = rememberLazyListState()
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { onScrollActive(it) }
+    }
+    DisposableEffect(Unit) {
+        onDispose { onScrollActive(false) }
+    }
     LaunchedEffect(place.scope, place.section) {
         listState.scrollToItem(0)
     }

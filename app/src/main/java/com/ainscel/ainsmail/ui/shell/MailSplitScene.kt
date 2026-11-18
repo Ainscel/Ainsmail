@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.SideEffect
@@ -60,6 +61,7 @@ fun isWideWindow(width: androidx.compose.ui.unit.Dp): Boolean = width >= WideThr
 fun SplitLayout(
     preferredFraction: MutableFloatState,
     rightOpen: Boolean,
+    onResizing: (Boolean) -> Unit = {},
     content: SplitSlots.() -> Unit,
 ) {
     val slots = SplitSlots().apply(content)
@@ -71,6 +73,11 @@ fun SplitLayout(
         if (!rightOpen && (state.locked || state.fullscreen.floatValue > 0f)) {
             state.resetFullscreen()
         }
+    }
+    val resizingNow = state.resizing
+    SideEffect { onResizing(resizingNow) }
+    DisposableEffect(Unit) {
+        onDispose { onResizing(false) }
     }
     val controls = remember(state, scope) {
         DetailFullscreenControls(

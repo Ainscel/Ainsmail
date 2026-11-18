@@ -304,6 +304,19 @@ class MailboxReducerTest {
     }
 
     @Test
+    fun markVisibleReadLeavesFilteredMailUnread() {
+        val session = session(
+            mail("shown", unread = true),
+            mail("hidden", unread = true, type = MailType.Notice),
+        ).copy(typeFilter = MailType.Important)
+
+        val read = reduce(session, MailboxIntent.MarkVisibleRead, 1L).session
+
+        assertFalse(read.mail("shown").unread)
+        assertTrue(read.mail("hidden").unread)
+    }
+
+    @Test
     fun replaceMailsKeepsSelectionThatStillExists() {
         val session = session(mail("a"), mail("b")).selecting("a", "gone")
         val next = reduce(

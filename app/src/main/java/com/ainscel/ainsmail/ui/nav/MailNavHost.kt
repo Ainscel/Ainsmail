@@ -36,6 +36,7 @@ internal fun MailNavHost(
     strategy: SceneStrategy<NavKey>,
     onUnavailable: (UnavailableKind) -> Unit,
     onExit: () -> Unit,
+    onScrollActive: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     NavDisplay(
@@ -66,6 +67,7 @@ internal fun MailNavHost(
                     list = mailbox.list,
                     openMailId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId,
                     actions = actions,
+                    onScrollActive = onScrollActive,
                 )
             }
             entry<MailDetailRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->

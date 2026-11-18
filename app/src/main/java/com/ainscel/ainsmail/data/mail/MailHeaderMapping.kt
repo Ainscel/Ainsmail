@@ -28,4 +28,5 @@ fun RemoteHeader.toEntity(accountId: String, folder: RemoteFolder): MailHeaderEn
     unread = unread,
     hasAttachment = hasAttachment,
     archived = false,
+    messageId = messageId,
 )

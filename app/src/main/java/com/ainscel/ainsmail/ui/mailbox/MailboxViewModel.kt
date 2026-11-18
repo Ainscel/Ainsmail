@@ -10,21 +10,33 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.model.Mail
+import com.ainscel.ainsmail.model.MailboxScope
+import com.ainscel.ainsmail.model.Section
 import com.ainscel.ainsmail.model.TagCatalog
 import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.AccountDirectory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** 首拉结果里界面需要知道的部分。凭证和异常原文留在数据层。 */
 sealed interface MailboxSyncHint {
-    data class NeedsReauth(val accountId: String) : MailboxSyncHint
-    data object Failed : MailboxSyncHint
+    val accountId: String
+    data class NeedsReauth(override val accountId: String) : MailboxSyncHint
+    data class Failed(override val accountId: String) : MailboxSyncHint
 }
+
+/** 首拉回调的结果。已经完成过的账号 [ranInitial] 为 false，打开应用时改走增量。 */
+data class InitialSyncResult(
+    val hints: List<MailboxSyncHint>,
+    val readyIds: List<String>,
+    val ranInitial: Boolean,
+)
 
 /**
  * 没有保存过账号时用传入的样例。
@@ -37,7 +49,10 @@ class MailboxViewModel(
     catalog: TagCatalog,
     private val book: AccountBook,
     private val observeMails: () -> Flow<List<Mail>>,
-    private val syncAccounts: suspend (List<String>) -> List<MailboxSyncHint>,
+    private val syncAccounts: suspend (List<String>) -> InitialSyncResult,
+    private val refreshScope: suspend (List<String>, Section) -> List<MailboxSyncHint>,
+    private val watchScope: suspend (List<String>, Section, (MailboxSyncHint) -> Unit) -> Unit,
+    private val pushSeen: suspend (List<String>) -> Unit,
     private val persistMails: suspend (List<Mail>) -> Unit,
     private val forgetAccounts: suspend (List<String>) -> Unit,
     private val io: CoroutineDispatcher,
@@ -49,6 +64,11 @@ class MailboxViewModel(
     /** 清库还没结束时，不要另开一轮首拉。 */
     private var forgetting = false
     private var forgetGeneration = 0
+    private var foreground = false
+    private var online = false
+    private var snapshotPaused = false
+    private var heldSnapshot: List<Mail>? = null
+    private val initiallySynced = HashSet<String>()
     private var session = MailboxSession(
         accounts = sampleAccounts,
         mails = sampleMails,
@@ -59,7 +79,7 @@ class MailboxViewModel(
     private var rowMinute = initialNow / 60_000L
     private val initial = project(session, initialNow)
     private var observeJob: Job? = null
-    private var syncJob: Job? = null
+    private var watchJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -109,6 +129,34 @@ class MailboxViewModel(
         onIntent(intent)
     }
 
+    /** 进程进入前台或离开。离开时停掉 IDLE。 */
+    fun setForeground(foreground: Boolean) {
+        if (this.foreground == foreground) return
+        this.foreground = foreground
+        restartWatch()
+    }
+
+    /** 默认网络有没有连通。没网时不刷新。 */
+    fun setOnline(online: Boolean) {
+        if (this.online == online) return
+        this.online = online
+        restartWatch()
+    }
+
+    /**
+     * 列表在滚、分界线在拖、遮罩在动时先攒着库快照。
+     * 停下来再应用最后一份，避免刷新挤进当前这一帧。
+     */
+    fun setSnapshotPaused(paused: Boolean) {
+        if (snapshotPaused == paused) return
+        snapshotPaused = paused
+        if (paused) return
+        val step = nextSnapshot(paused = false, held = heldSnapshot, incoming = null)
+        heldSnapshot = step.held
+        val apply = step.apply ?: return
+        if (!showingSamples) applySnapshot(apply)
+    }
+
     /**
      * 在组合里调用。读取 [contentEpoch] 才会在信件变化后重组。
      * 打开哪封信由导航传入，不写入会话。
@@ -134,10 +182,12 @@ class MailboxViewModel(
         when {
             saved.isEmpty() -> {
                 if (!showingSamples) {
-                    showingSamples = true
-                    syncedAccountIds = emptySet()
-                    pendingLocal.clear()
-                    stopRealMailPipeline()
+                showingSamples = true
+                syncedAccountIds = emptySet()
+                initiallySynced.clear()
+                heldSnapshot = null
+                pendingLocal.clear()
+                stopRealMailPipeline()
                     onIntent(MailboxIntent.RestoreSamples(sampleAccounts, sampleMails))
                 }
             }
@@ -161,9 +211,11 @@ class MailboxViewModel(
     private fun forgetRemoved(removed: List<String>, nextIds: List<String>) {
         val prefixes = removed.map { "$it:" }
         pendingLocal.keys.removeAll { id -> prefixes.any { prefix -> id.startsWith(prefix) } }
+        removed.forEach { initiallySynced.remove(it) }
         val generation = ++forgetGeneration
         forgetting = true
-        syncJob?.cancel()
+        watchJob?.cancel()
+        watchJob = null
         syncedAccountIds = nextIds.toSet()
         viewModelScope.launch {
             try {
@@ -188,32 +240,76 @@ class MailboxViewModel(
             observeJob = viewModelScope.launch {
                 observeMails().collectLatest { mails ->
                     if (showingSamples) return@collectLatest
-                    onIntent(
-                        MailboxIntent.ReplaceMails(
-                            mergeSnapshot(pendingLocal, mails, session.mails),
-                        ),
-                    )
+                    onDatabaseMails(mails)
                 }
             }
         }
-        syncJob?.cancel()
-        syncJob = viewModelScope.launch {
-            syncAccounts(accountIds).forEach { hint ->
-                when (hint) {
-                    is MailboxSyncHint.NeedsReauth ->
-                        onIntent(MailboxIntent.ReportNeedsReauth(hint.accountId))
-                    MailboxSyncHint.Failed ->
-                        onIntent(MailboxIntent.ReportSyncFailed)
-                }
-            }
-        }
+        restartWatch()
     }
 
     private fun stopRealMailPipeline() {
         observeJob?.cancel()
         observeJob = null
-        syncJob?.cancel()
-        syncJob = null
+        watchJob?.cancel()
+        watchJob = null
+    }
+
+    private fun restartWatch() {
+        watchJob?.cancel()
+        watchJob = null
+        if (showingSamples || forgetting || !foreground) return
+        val ids = scopeIds()
+        val section = session.section
+        watchJob = viewModelScope.launch {
+            val unchecked = ids.filter { it !in initiallySynced }
+            var ranInitial = false
+            if (unchecked.isNotEmpty()) {
+                if (!online) return@launch
+                val result = syncAccounts(unchecked)
+                showHints(result.hints)
+                initiallySynced.addAll(result.readyIds)
+                ranInitial = result.ranInitial
+            }
+            if (!foreground || !online || showingSamples || !currentCoroutineContext().isActive) return@launch
+            val ready = ids.filter { it in initiallySynced }
+            if (ready.isEmpty()) return@launch
+            if (!ranInitial) showHints(refreshScope(ready, section))
+            if (!foreground || !currentCoroutineContext().isActive) return@launch
+            watchScope(ready, section) { hint ->
+                viewModelScope.launch { showHints(listOf(hint)) }
+            }
+        }
+    }
+
+    private fun scopeIds(): List<String> = when (val scope = session.scope) {
+        MailboxScope.All -> session.accounts.map { it.id }
+        is MailboxScope.Account -> listOf(scope.id)
+    }
+
+    private fun showHints(hints: List<MailboxSyncHint>) {
+        for (hint in hints) {
+            when (hint) {
+                is MailboxSyncHint.NeedsReauth ->
+                    onIntent(MailboxIntent.ReportNeedsReauth(hint.accountId))
+                is MailboxSyncHint.Failed ->
+                    onIntent(MailboxIntent.ReportSyncFailed)
+            }
+        }
+    }
+
+    private fun onDatabaseMails(mails: List<Mail>) {
+        val step = nextSnapshot(snapshotPaused, heldSnapshot, mails)
+        heldSnapshot = step.held
+        val apply = step.apply ?: return
+        applySnapshot(apply)
+    }
+
+    private fun applySnapshot(mails: List<Mail>) {
+        onIntent(
+            MailboxIntent.ReplaceMails(
+                mergeSnapshot(pendingLocal, mails, session.mails),
+            ),
+        )
     }
 
     private fun persistLocal(previous: MailboxSession, next: MailboxSession) {
@@ -226,9 +322,15 @@ class MailboxViewModel(
         }
         if (changed.isEmpty()) return
         for (mail in changed) pendingLocal[mail.id] = mail.localFlags()
+        val readAccounts = ArrayList<String>()
+        for (mail in changed) {
+            val prior = previousById[mail.id] ?: continue
+            if (prior.unread && !mail.unread) readAccounts.add(mail.accountId)
+        }
         viewModelScope.launch(io) {
             try {
                 persistMails(changed)
+                if (readAccounts.isNotEmpty()) pushSeen(readAccounts.distinct())
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -249,7 +351,8 @@ class MailboxViewModel(
         if (projected.chrome != chrome) chrome = projected.chrome
         if (projected.list != list) list = projected.list
         val nextPlace = MailboxPlace(session.scope, session.section)
-        if (nextPlace != place) place = nextPlace
+        val placeChanged = nextPlace != place
+        if (placeChanged) place = nextPlace
         val nextSaved = if (showingSamples) emptyList() else session.accounts
         if (nextSaved != savedAccounts) savedAccounts = nextSaved
         if (session.reauthAccountIds != reauthAccountIds) reauthAccountIds = session.reauthAccountIds
@@ -257,6 +360,7 @@ class MailboxViewModel(
             previous.accounts != session.accounts ||
             previous.catalog != session.catalog
         if (contentChanged) contentEpoch++
+        if (placeChanged && !showingSamples) restartWatch()
     }
 
     companion object {
@@ -266,7 +370,10 @@ class MailboxViewModel(
             catalog: TagCatalog,
             book: AccountBook,
             observeMails: () -> Flow<List<Mail>>,
-            syncAccounts: suspend (List<String>) -> List<MailboxSyncHint>,
+            syncAccounts: suspend (List<String>) -> InitialSyncResult,
+            refreshScope: suspend (List<String>, Section) -> List<MailboxSyncHint>,
+            watchScope: suspend (List<String>, Section, (MailboxSyncHint) -> Unit) -> Unit,
+            pushSeen: suspend (List<String>) -> Unit,
             persistMails: suspend (List<Mail>) -> Unit,
             forgetAccounts: suspend (List<String>) -> Unit,
             io: CoroutineDispatcher,
@@ -281,6 +388,9 @@ class MailboxViewModel(
                         book,
                         observeMails,
                         syncAccounts,
+                        refreshScope,
+                        watchScope,
+                        pushSeen,
                         persistMails,
                         forgetAccounts,
                         io,
