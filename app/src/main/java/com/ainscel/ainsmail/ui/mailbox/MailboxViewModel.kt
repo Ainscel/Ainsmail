@@ -8,7 +8,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.ainscel.ainsmail.data.prefs.DisplayPreferences
 import com.ainscel.ainsmail.model.Account
+import com.ainscel.ainsmail.model.AccountBadgeStyle
 import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.MailboxScope
 import com.ainscel.ainsmail.model.Section
@@ -55,6 +57,7 @@ class MailboxViewModel(
     private val pushSeen: suspend (List<String>) -> Unit,
     private val persistMails: suspend (List<Mail>) -> Unit,
     private val forgetAccounts: suspend (List<String>) -> Unit,
+    private val display: DisplayPreferences,
     private val io: CoroutineDispatcher,
 ) : ViewModel() {
     private var showingSamples = true
@@ -77,11 +80,20 @@ class MailboxViewModel(
     private val initialNow = System.currentTimeMillis()
     /** 行上的时间文字按这一分钟生成。同一分钟里内容没变就不再格式化。 */
     private var rowMinute = initialNow / 60_000L
-    private val initial = project(session, initialNow)
+    /** 收件账户小圆的重复方式。和会话无关，换它时不能沿用上一份行。 */
+    private var badgeStyle: AccountBadgeStyle = display.accountBadge.value
+    private val initial = project(session, initialNow, badgeStyle = badgeStyle)
     private var observeJob: Job? = null
     private var watchJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            display.accountBadge.collect { style ->
+                if (style == badgeStyle) return@collect
+                badgeStyle = style
+                publish(session, restyleRows = true)
+            }
+        }
         viewModelScope.launch {
             book.directory.collect { directory ->
                 if (directory is AccountDirectory.Ready) applySaved(directory.accounts)
@@ -339,15 +351,15 @@ class MailboxViewModel(
         }
     }
 
-    private fun publish(previous: MailboxSession) {
+    private fun publish(previous: MailboxSession, restyleRows: Boolean = false) {
         val now = System.currentTimeMillis()
-        val reuse = if (rowsReusable(previous, session, rowMinute, now)) {
+        val reuse = if (!restyleRows && rowsReusable(previous, session, rowMinute, now)) {
             ListReuse(list.rows, chrome.sectionMailIds, list.tagGroups)
         } else {
             null
         }
         rowMinute = now / 60_000L
-        val projected = project(session, now, chrome.accounts, reuse)
+        val projected = project(session, now, chrome.accounts, reuse, badgeStyle)
         if (projected.chrome != chrome) chrome = projected.chrome
         if (projected.list != list) list = projected.list
         val nextPlace = MailboxPlace(session.scope, session.section)
@@ -376,6 +388,7 @@ class MailboxViewModel(
             pushSeen: suspend (List<String>) -> Unit,
             persistMails: suspend (List<Mail>) -> Unit,
             forgetAccounts: suspend (List<String>) -> Unit,
+            display: DisplayPreferences,
             io: CoroutineDispatcher,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
@@ -393,6 +406,7 @@ class MailboxViewModel(
                         pushSeen,
                         persistMails,
                         forgetAccounts,
+                        display,
                         io,
                     ) as T
                 }

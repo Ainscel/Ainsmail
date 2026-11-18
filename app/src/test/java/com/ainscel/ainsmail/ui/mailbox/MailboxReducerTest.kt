@@ -10,6 +10,7 @@ import com.ainscel.ainsmail.model.TagCatalog
 import com.ainscel.ainsmail.model.TagPool
 import com.ainscel.ainsmail.model.TagWord
 import com.ainscel.ainsmail.model.Account
+import com.ainscel.ainsmail.model.AccountBadgeStyle
 import com.ainscel.ainsmail.model.Provider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -317,6 +318,41 @@ class MailboxReducerTest {
     }
 
     @Test
+    fun accountBadgeCollapsesOnlyAConsecutiveRun() {
+        val accounts = listOf(
+            Account("a1", "甲", "a@qq.com", Provider.Qq, "account/a1/avatar"),
+            Account("a2", "乙", "b@qq.com", Provider.Qq),
+        )
+        val session = MailboxSession(
+            accounts = accounts,
+            mails = listOf(
+                mail("later", accountId = "a2", timeMillis = 5L),
+                mail("first", accountId = "a1", timeMillis = 30L),
+                mail("second", accountId = "a1", timeMillis = 20L),
+                mail("third", accountId = "a2", timeMillis = 10L),
+            ),
+            catalog = TagCatalog(emptyList()),
+        )
+
+        val every = project(session, now = 0L, badgeStyle = AccountBadgeStyle.EveryRow)
+        assertEquals(listOf("甲", "甲", "乙", "乙"), every.list.rows.map { it.accountName })
+
+        val collapsed = project(session, now = 0L, badgeStyle = AccountBadgeStyle.FirstOfRun)
+        assertEquals(listOf("甲", null, "乙", null), collapsed.list.rows.map { it.accountName })
+        assertEquals(
+            listOf("account/a1/avatar", null, null, null),
+            collapsed.list.rows.map { it.accountAvatar },
+        )
+
+        val oneAccount = project(
+            session.copy(scope = MailboxScope.Account("a1")),
+            now = 0L,
+            badgeStyle = AccountBadgeStyle.EveryRow,
+        )
+        assertTrue(oneAccount.list.rows.all { it.accountName == null })
+    }
+
+    @Test
     fun replaceMailsKeepsSelectionThatStillExists() {
         val session = session(mail("a"), mail("b")).selecting("a", "gone")
         val next = reduce(
@@ -354,6 +390,7 @@ private fun mail(
     archived: Boolean = false,
     accountId: String = "a1",
     unread: Boolean = true,
+    timeMillis: Long = 0L,
 ): Mail = Mail(
     id = id,
     accountId = accountId,
@@ -363,7 +400,7 @@ private fun mail(
     subject = id,
     preview = "",
     body = "占位正文",
-    timeMillis = 0L,
+    timeMillis = timeMillis,
     unread = unread,
     type = type,
     tagNames = tagNames,

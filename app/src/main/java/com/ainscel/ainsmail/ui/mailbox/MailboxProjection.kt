@@ -1,6 +1,7 @@
 package com.ainscel.ainsmail.ui.mailbox
 
 import com.ainscel.ainsmail.model.Account
+import com.ainscel.ainsmail.model.AccountBadgeStyle
 import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.MailType
 import com.ainscel.ainsmail.model.MailboxScope
@@ -53,6 +54,7 @@ fun project(
     now: Long,
     previousAccounts: List<AccountUi> = emptyList(),
     reuse: ListReuse? = null,
+    badgeStyle: AccountBadgeStyle = AccountBadgeStyle.EveryRow,
 ): MailboxProjection {
     val sectionMailIds: Set<String>
     val rows: List<MailRowUi>
@@ -62,7 +64,7 @@ fun project(
         rows = reuse.rows
         groups = reuse.tagGroups
     } else {
-        val built = scanRows(session, now)
+        val built = scanRows(session, now, badgeStyle)
         sectionMailIds = built.sectionMailIds
         rows = built.rows
         groups = tagGroups(session)
@@ -94,8 +96,13 @@ private class ScannedRows(
 )
 
 /** 全部邮件只扫一遍：板块 id 和可见行一起收齐。 */
-private fun scanRows(session: MailboxSession, now: Long): ScannedRows {
+private fun scanRows(
+    session: MailboxSession,
+    now: Long,
+    badgeStyle: AccountBadgeStyle,
+): ScannedRows {
     val showAccount = session.scope is MailboxScope.All
+    val collapseBadge = showAccount && badgeStyle == AccountBadgeStyle.FirstOfRun
     val sectionMailIds = HashSet<String>()
     val visible = ArrayList<Mail>()
     for (mail in session.mails) {
@@ -108,8 +115,11 @@ private fun scanRows(session: MailboxSession, now: Long): ScannedRows {
     val accountsById = HashMap<String, Account>(session.accounts.size)
     for (account in session.accounts) accountsById.putIfAbsent(account.id, account)
     val rows = ArrayList<MailRowUi>(visible.size)
+    var previousAccountId: String? = null
     for (mail in visible) {
-        rows.add(toRow(session, mail, now, zone, showAccount, accountsById))
+        val showBadge = showAccount && (!collapseBadge || mail.accountId != previousAccountId)
+        rows.add(toRow(session, mail, now, zone, showBadge, accountsById))
+        previousAccountId = mail.accountId
     }
     return ScannedRows(sectionMailIds, rows)
 }
@@ -157,7 +167,7 @@ private fun toRow(
     mail: Mail,
     now: Long,
     zone: ZoneId,
-    showAccount: Boolean,
+    showAccountBadge: Boolean,
     accountsById: Map<String, Account>,
 ): MailRowUi {
     val account = accountsById[mail.accountId]
@@ -168,12 +178,12 @@ private fun toRow(
         preview = mail.preview,
         timeLabel = formatMailTime(mail.timeMillis, now, zone),
         unread = mail.unread,
-        accountName = if (showAccount) account?.name else null,
+        accountName = if (showAccountBadge) account?.name else null,
         senderLabel = avatarLabel(mail.fromName),
         senderHue = avatarHue(mail.fromName),
         accountLabel = account?.let { avatarLabel(it.name) }.orEmpty(),
         accountHue = account?.let { avatarHue(it.name) } ?: 0f,
-        accountAvatar = if (showAccount) account?.avatarFile else null,
+        accountAvatar = if (showAccountBadge) account?.avatarFile else null,
         tags = mail.tagNames.asReversed().map { name ->
             TagChipUi(name, session.catalog.poolOf(name) ?: TagPool.Pending)
         },

@@ -17,14 +17,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ainscel.ainsmail.R
+import com.ainscel.ainsmail.data.prefs.DisplayPreferences
 import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.SecretStore
@@ -40,6 +43,7 @@ fun SettingsSectionPane(
     section: SettingsSection,
     book: AccountBook,
     secrets: SecretStore,
+    display: DisplayPreferences,
     accounts: List<Account>,
     reauthAccountIds: Set<String>,
     onRelogin: (Account) -> Unit,
@@ -73,6 +77,16 @@ fun SettingsSectionPane(
                 onEdit = model::onEdit,
                 claimSaved = model::claimSavedTick,
                 claimError = model::claimErrorTick,
+                title = title,
+                onBack = onBack,
+                modifier = modifier,
+            )
+        }
+        SettingsSection.Display -> {
+            val style by display.accountBadge.collectAsState()
+            DisplaySettings(
+                style = style,
+                onSelect = display::setAccountBadge,
                 title = title,
                 onBack = onBack,
                 modifier = modifier,

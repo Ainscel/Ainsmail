@@ -309,3 +309,12 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - `:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。`testDebugUnitTest` 仍因工程路径含「项目」在启动测试类时 ClassNotFound，测试没有真正跑起来。
 - 下一步是第 3 项正文清洗。
 
+## 2026-11-18 20:50
+
+设置里增加「显示 → 收件人头像显示方式」。未改任务勾选。
+
+- 全部邮箱列表右下角的收件账户小圆，可以改成连续同一账户只在第一封显示。中间换成另一个账户后再画。单个账号的列表本来就不画这个小圆。
+- 默认仍是每封都显示。偏好写在本机 `ainsmail-display`，不进加密账号文件，切换时不收信。
+- 比较用账号 id，放在列表投影里。行缓存换显示方式时整表重算，避免沿用上一份小圆。
+- `:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。未跑 `testDebugUnitTest`：工程路径含「项目」时测试类仍会 ClassNotFound。
+

@@ -43,6 +43,7 @@ import com.ainscel.ainsmail.security.SecretStore
 import com.ainscel.ainsmail.ui.account.AccountLoginLayer
 import com.ainscel.ainsmail.ui.account.AccountLoginViewModel
 import com.ainscel.ainsmail.data.mail.FirstSyncOutcome
+import com.ainscel.ainsmail.data.prefs.DisplayPreferences
 import com.ainscel.ainsmail.ui.mailbox.InitialSyncResult
 import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
 import com.ainscel.ainsmail.ui.mailbox.MailboxSyncHint
@@ -59,10 +60,11 @@ fun MailApp(modifier: Modifier = Modifier) {
     val appContext = context.applicationContext
     val secrets = remember { SecretStore(appContext) }
     val book = remember { AccountBook(appContext, secrets) }
+    val display = remember { DisplayPreferences(appContext) }
     val mailStore = remember { MailLocalStore(appContext, Dispatchers.IO) }
     val firstSync = remember(book, mailStore) { MailFirstSync(book, mailStore, Dispatchers.IO) }
     val liveSync = remember(book, mailStore) { MailLiveSync(book, mailStore, Dispatchers.IO) }
-    val mailboxFactory = remember(book, mailStore, firstSync, liveSync) {
+    val mailboxFactory = remember(book, mailStore, firstSync, liveSync, display) {
         MailboxViewModel.factory(
             accounts = SampleAccounts,
             mails = sampleMails(System.currentTimeMillis()),
@@ -81,6 +83,7 @@ fun MailApp(modifier: Modifier = Modifier) {
             pushSeen = liveSync::pushSeen,
             persistMails = mailStore::persistLocalMails,
             forgetAccounts = firstSync::forgetAccounts,
+            display = display,
             io = Dispatchers.IO,
         )
     }
@@ -169,6 +172,7 @@ fun MailApp(modifier: Modifier = Modifier) {
                     mailbox = mailbox,
                     book = book,
                     secrets = secrets,
+                    display = display,
                     onRelogin = { account ->
                         when (account.provider) {
                             Provider.Gmail -> (context as? Activity)?.let(login::startGmail)

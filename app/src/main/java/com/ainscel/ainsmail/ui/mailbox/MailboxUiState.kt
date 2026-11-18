@@ -56,12 +56,13 @@ data class MailRowUi(
     val preview: String,
     val timeLabel: String,
     val unread: Boolean,
+    /** 这一行要画收件账户小圆时才有名字。单个账号，或连续重复被收起时为空。 */
     val accountName: String?,
     val senderLabel: String,
     val senderHue: Float,
     val accountLabel: String,
     val accountHue: Float,
-    /** 全部账号时，角标用的头像文件。没有就画缩小的账号字。 */
+    /** 这一行要画小圆、且账号有头像文件时才有路径。没有就画缩小的账号字。 */
     val accountAvatar: String? = null,
     val tags: List<TagChipUi>,
     val showClassifying: Boolean,
