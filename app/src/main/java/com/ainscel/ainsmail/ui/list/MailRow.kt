@@ -34,9 +34,6 @@ import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
 import com.ainscel.ainsmail.ui.mailbox.MailRowUi
 
-/** 标题比预览更早收束的右间距。 */
-private val SubjectFadeInset = 40.dp
-
 /** 发件人与右侧「标签+时间」之间的间隙。 */
 private val MetaGap = 8.dp
 
@@ -126,7 +123,7 @@ private fun MailRowTextBlock(
             // [0] 发件人
             Text(
                 text = row.fromName,
-                modifier = Modifier.zeroReflowFadeText(fadeWidth = 24.dp),
+                modifier = Modifier.zeroReflowFadeText(),
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Clip,
@@ -158,13 +155,10 @@ private fun MailRowTextBlock(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            // [2] 标题：比预览更早淡出
+            // [2] 标题
             Text(
                 text = row.subject,
-                modifier = Modifier.zeroReflowFadeText(
-                    rightInset = SubjectFadeInset,
-                    fadeWidth = MailTextFadeWidth,
-                ),
+                modifier = Modifier.zeroReflowFadeText(),
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Clip,
@@ -174,7 +168,7 @@ private fun MailRowTextBlock(
             // [3] 预览
             Text(
                 text = row.preview,
-                modifier = Modifier.zeroReflowFadeText(fadeWidth = 28.dp),
+                modifier = Modifier.zeroReflowFadeText(),
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Clip,
