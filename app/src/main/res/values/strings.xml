@@ -87,6 +87,7 @@
     <string name="search_ok">知道了</string>
     <string name="detail_empty">选一封邮件</string>
     <string name="detail_missing">这封邮件不在了</string>
+    <string name="detail_body_waiting">正在整理这封邮件</string>
     <string name="detail_original">按原版式查看</string>
     <string name="detail_original_pending">原版式还没接上，先看这段文字</string>
     <string name="detail_edit">编辑</string>

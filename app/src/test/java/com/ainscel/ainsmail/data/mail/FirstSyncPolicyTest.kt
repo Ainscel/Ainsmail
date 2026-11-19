@@ -46,6 +46,25 @@ class MailHeaderMappingTest {
     fun unknownFolderIsSkipped() {
         assertNull(header(remoteFolder = "Nope").toMail())
     }
+
+    @Test
+    fun freshHeaderHasNoPreview() {
+        val mail = header(remoteFolder = "Inbox").toMail()
+        assertEquals("", mail?.preview)
+        assertEquals(false, mail?.bodyReady)
+    }
+
+    @Test
+    fun processedHeaderKeepsPreviewOutsideTheBody() {
+        val mail = header(remoteFolder = "Inbox").copy(
+            preview = "开头",
+            bodyProcessedAt = 10L,
+            bodyRelativePath = "mail/a/Inbox/a_Inbox_1",
+        ).toMail()
+        assertEquals("开头", mail?.preview)
+        assertEquals(true, mail?.bodyReady)
+        assertEquals("", mail?.body)
+    }
 }
 
 private fun header(remoteFolder: String, subject: String = "主题"): MailHeaderEntity = MailHeaderEntity(

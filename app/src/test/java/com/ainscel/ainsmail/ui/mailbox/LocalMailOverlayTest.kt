@@ -54,6 +54,20 @@ class LocalMailOverlayTest {
     }
 
     @Test
+    fun databasePreviewOverridesSessionPreview() {
+        val previous = listOf(mail(id = "a", preview = "旧预览", type = MailType.Notice))
+        val merged = mergeSnapshot(
+            linkedMapOf(),
+            listOf(mail(id = "a", preview = "库里的预览", bodyReady = true)),
+            previous,
+        )
+        val row = merged.single()
+        assertEquals("库里的预览", row.preview)
+        assertEquals(MailType.Notice, row.type)
+        assertTrue(row.bodyReady)
+    }
+
+    @Test
     fun dropsPendingOnceDatabaseCatchesUpAndKeepsSessionFields() {
         val pending = linkedMapOf(
             "a" to LocalFlags(unread = false, archived = false, locallyDeleted = false),
@@ -115,6 +129,7 @@ private fun mail(
     tagNames: List<String> = emptyList(),
     preview: String = "",
     body: String = "",
+    bodyReady: Boolean = false,
 ): Mail = Mail(
     id = id,
     accountId = "a1",
@@ -129,4 +144,5 @@ private fun mail(
     unread = unread,
     type = type,
     tagNames = tagNames,
+    bodyReady = bodyReady,
 )

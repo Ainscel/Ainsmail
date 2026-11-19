@@ -60,7 +60,8 @@ data class Account(
 
 /**
  * 列表和正文暂时共用这一份。
- * [body] 只是内存里的占位正文，列表投影不准读它。清洗后的 HTML 和 Markdown 以后落文件。
+ * [body] 只给样例信用。真信的正文在文件里，列表只读 [preview]。
+ * [bodyReady] 为真时，文件已经写好。
  */
 data class Mail(
     val id: String,
@@ -77,6 +78,8 @@ data class Mail(
     val unread: Boolean,
     val type: MailType?,
     val tagNames: List<String>,
+    /** 正文文件已经落盘。样例信不用这个标记。 */
+    val bodyReady: Boolean = false,
 )
 
 fun Mail.inScope(scope: MailboxScope): Boolean = when (scope) {

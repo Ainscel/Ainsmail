@@ -52,6 +52,7 @@ interface MailDao {
             messageId = excluded.messageId
         """,
     )
+    /** 只更新信封。正文路径、处理时间和预览留在原行，同步不能把已洗好的结果清掉。 */
     suspend fun upsertEnvelope(
         id: String,
         accountId: String,
@@ -197,6 +198,25 @@ interface MailDao {
 
     @Query("DELETE FROM mail_headers WHERE accountId IN (:accountIds)")
     suspend fun deleteHeaders(accountIds: List<String>)
+
+    @Query(
+        """
+        UPDATE mail_headers
+        SET bodyRelativePath = :relativePath, bodyProcessedAt = :processedAt, preview = :preview
+        WHERE id = :id
+        """,
+    )
+    suspend fun markBodyProcessed(id: String, relativePath: String, processedAt: Long, preview: String)
+
+    @Query(
+        """
+        SELECT id FROM mail_headers
+        WHERE bodyProcessedAt IS NULL
+        ORDER BY timeMillis DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun unprocessedIds(limit: Int): List<String>
 
     @Query("DELETE FROM folder_sync_cursors WHERE accountId IN (:accountIds)")
     suspend fun deleteCursors(accountIds: List<String>)

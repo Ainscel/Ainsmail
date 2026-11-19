@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [MailHeaderEntity::class, FolderSyncCursorEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class MailDatabase : RoomDatabase() {
@@ -25,7 +25,7 @@ abstract class MailDatabase : RoomDatabase() {
                     context.applicationContext,
                     MailDatabase::class.java,
                     "ainsmail-mail.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
             }
         }
     }
@@ -65,5 +65,14 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE mail_headers ADD COLUMN messageId TEXT NOT NULL DEFAULT ''")
         db.execSQL("ALTER TABLE mail_headers ADD COLUMN seenPending INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+/** 正文只记路径、处理时间和列表预览。旧行都还没洗过。 */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE mail_headers ADD COLUMN bodyRelativePath TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE mail_headers ADD COLUMN bodyProcessedAt INTEGER")
+        db.execSQL("ALTER TABLE mail_headers ADD COLUMN preview TEXT NOT NULL DEFAULT ''")
     }
 }

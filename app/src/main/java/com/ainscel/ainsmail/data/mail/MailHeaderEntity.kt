@@ -1,5 +1,6 @@
 package com.ainscel.ainsmail.data.mail
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import com.ainscel.ainsmail.model.Mail
@@ -7,7 +8,7 @@ import com.ainscel.ainsmail.model.MailType
 import com.ainscel.ainsmail.model.RemoteFolder
 
 /**
- * 邮件头与本机标记。正文不进库。
+ * 邮件头与本机标记。正文不进库，只记路径、处理时间和列表预览。
  * [typeName] / [tagNamesCsv] 预留给分类任务，本阶段保持空。
  */
 @Entity(
@@ -41,6 +42,14 @@ data class MailHeaderEntity(
     val messageId: String = "",
     /** 本机已读还没写成服务器的 \\Seen。同步冲突时不能覆盖。 */
     val seenPending: Boolean = false,
+    /** 相对 files 目录的正文目录。空字符串表示文件还没写好。 */
+    @ColumnInfo(defaultValue = "''")
+    val bodyRelativePath: String = "",
+    /** 正文清洗完成的时间。空表示还没处理。 */
+    val bodyProcessedAt: Long? = null,
+    /** Markdown 纯文本开头。洗完前是空，不从信头回填。 */
+    @ColumnInfo(defaultValue = "''")
+    val preview: String = "",
 )
 
 @Entity(
@@ -70,11 +79,12 @@ fun MailHeaderEntity.toMail(): Mail? {
         locallyDeleted = locallyDeleted,
         fromName = fromName.ifBlank { fromAddress.substringBefore('@').ifBlank { fromAddress } },
         subject = subject,
-        preview = "",
+        preview = preview,
         body = "",
         timeMillis = timeMillis,
         unread = unread,
         type = typeName?.let { runCatching { MailType.valueOf(it) }.getOrNull() },
+        bodyReady = bodyProcessedAt != null,
         tagNames = if (tagNamesCsv.isBlank()) {
             emptyList()
         } else {

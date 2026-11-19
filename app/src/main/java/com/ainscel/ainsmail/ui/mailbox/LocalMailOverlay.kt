@@ -25,17 +25,22 @@ fun Mail.localFlags(): LocalFlags = LocalFlags(unread, archived, locallyDeleted)
 private fun LocalFlags.matches(mail: Mail): Boolean =
     unread == mail.unread && archived == mail.archived && locallyDeleted == mail.locallyDeleted
 
-/** 类型、标签、预览、正文这一阶段只活在会话里。标记仍以库行和挂起项为准。 */
+/**
+ * 类型和标签仍只活在会话里。
+ * 预览以库为准；库还是空时才沿用会话里的，避免旧的空预览盖住刚洗好的开头。
+ * 正文文件不进会话，样例信的 [Mail.body] 仍从上一份抄过来。
+ */
 private fun Mail.withSessionFields(from: Mail): Mail {
-    if (type == from.type && tagNames == from.tagNames && preview == from.preview && body == from.body) {
+    val nextPreview = preview.ifEmpty { from.preview }
+    if (type == from.type && tagNames == from.tagNames && nextPreview == preview && body == from.body) {
         return this
     }
-    return copy(type = from.type, tagNames = from.tagNames, preview = from.preview, body = from.body)
+    return copy(type = from.type, tagNames = from.tagNames, preview = nextPreview, body = from.body)
 }
 
 /**
  * 以库行为底。挂起标记还没跟上时只盖已读、归档和本机删除。
- * 上一份会话里有的类型、标签、预览、正文抄过来；没有这封信就用库行自己的值。
+ * 上一份会话里有的类型、标签和样例正文抄过来。预览优先用库行。没有这封信就用库行自己的值。
  * 会改 [pending]。没有要盖、也没有要抄的字段时，返回 [fromDb] 原实例。
  */
 fun mergeSnapshot(

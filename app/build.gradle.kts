@@ -77,6 +77,7 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.angus.mail)
+    implementation(libs.jsoup)
     implementation(libs.angus.activation)
     implementation(libs.jakarta.activation.api)
     debugImplementation(libs.androidx.compose.ui.tooling)

@@ -31,6 +31,7 @@ import com.ainscel.ainsmail.R
 import com.ainscel.ainsmail.data.SampleAccounts
 import com.ainscel.ainsmail.data.mail.MailFirstSync
 import com.ainscel.ainsmail.data.mail.MailLiveSync
+import com.ainscel.ainsmail.data.mail.MailBodyPipeline
 import com.ainscel.ainsmail.data.mail.MailLocalStore
 import com.ainscel.ainsmail.data.mail.MailSyncGate
 import com.ainscel.ainsmail.data.mail.scheduleInboxSync
@@ -47,6 +48,7 @@ import com.ainscel.ainsmail.data.prefs.DisplayPreferences
 import com.ainscel.ainsmail.ui.mailbox.InitialSyncResult
 import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
 import com.ainscel.ainsmail.ui.mailbox.MailboxSyncHint
+import com.ainscel.ainsmail.ui.mailbox.BodyWash
 import com.ainscel.ainsmail.ui.mailbox.MailboxViewModel
 import com.ainscel.ainsmail.ui.shell.AccountOverlay
 import com.ainscel.ainsmail.ui.shell.OverlayController
@@ -64,7 +66,18 @@ fun MailApp(modifier: Modifier = Modifier) {
     val mailStore = remember { MailLocalStore(appContext, Dispatchers.IO) }
     val firstSync = remember(book, mailStore) { MailFirstSync(book, mailStore, Dispatchers.IO) }
     val liveSync = remember(book, mailStore) { MailLiveSync(book, mailStore, Dispatchers.IO) }
-    val mailboxFactory = remember(book, mailStore, firstSync, liveSync, display) {
+    val bodyWash = remember(book, mailStore) {
+        val pipeline = MailBodyPipeline(book, mailStore, Dispatchers.IO)
+        BodyWash(
+            attach = pipeline::attach,
+            resume = pipeline::resume,
+            pause = pipeline::pause,
+            stop = pipeline::stop,
+            prioritize = pipeline::prioritize,
+            readMarkdown = mailStore::readMarkdown,
+        )
+    }
+    val mailboxFactory = remember(book, mailStore, firstSync, liveSync, display, bodyWash) {
         MailboxViewModel.factory(
             accounts = SampleAccounts,
             mails = sampleMails(System.currentTimeMillis()),
@@ -80,6 +93,7 @@ fun MailApp(modifier: Modifier = Modifier) {
             pushSeen = liveSync::pushSeen,
             persistMails = mailStore::persistLocalMails,
             forgetAccounts = firstSync::forgetAccounts,
+            bodyWash = bodyWash,
             display = display,
             io = Dispatchers.IO,
         )

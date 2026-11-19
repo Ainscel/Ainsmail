@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
+import com.ainscel.ainsmail.ui.mailbox.DetailReading
 import com.ainscel.ainsmail.ui.mailbox.MailDetailUi
 import com.ainscel.ainsmail.ui.shell.LocalDetailFullscreen
 import com.ainscel.ainsmail.ui.shell.MailCapsuleHeight
@@ -75,7 +76,17 @@ fun MailDetailPane(
                 )
             }
             Spacer(Modifier.height(16.dp))
-            Text(text = detail.body, style = MaterialTheme.typography.bodyLarge)
+            when (val reading = detail.reading) {
+                DetailReading.Waiting -> Text(
+                    text = stringResource(R.string.detail_body_waiting),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                is DetailReading.Markdown -> Text(
+                    text = reading.text,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
             // 给右下角三颗圆形按钮留出空档，正文滚到底时不会被挡住。
             Spacer(
                 Modifier.height(MailCapsuleHeight * 3 + DetailActionGap * 2 + MailChromeInset + 8.dp),

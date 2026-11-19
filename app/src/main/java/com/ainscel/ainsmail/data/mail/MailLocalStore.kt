@@ -20,6 +20,7 @@ class MailLocalStore(
     context: Context,
     private val io: CoroutineDispatcher,
     private val db: MailDatabase = MailDatabase.get(context),
+    private val bodies: BodyFiles = BodyFiles(context.applicationContext.filesDir),
 ) {
     private val dao = db.mailDao()
 
@@ -54,6 +55,7 @@ class MailLocalStore(
     suspend fun replaceFolder(accountId: String, remoteFolder: String, rows: List<MailHeaderEntity>) =
         writes.withLock {
             withContext(io) {
+                bodies.deleteFolder(accountId, remoteFolder)
                 dao.replaceFolderHeaders(accountId, remoteFolder, rows.map { applyEarly(it) })
             }
         }
@@ -85,11 +87,46 @@ class MailLocalStore(
         }
     }
 
-    /** 删掉该账号的信头和游标。调用方不要传空列表。 */
+    /** 删掉该账号的信头、游标和正文文件。调用方不要传空列表。 */
     suspend fun deleteAccounts(accountIds: List<String>) {
         if (accountIds.isEmpty()) return
         writes.withLock {
-            withContext(io) { dao.deleteAccounts(accountIds) }
+            withContext(io) {
+                for (accountId in accountIds) bodies.deleteAccount(accountId)
+                dao.deleteAccounts(accountIds)
+            }
+        }
+    }
+
+    suspend fun unprocessedIds(limit: Int = 40): List<String> = withContext(io) {
+        dao.unprocessedIds(limit)
+    }
+
+    suspend fun findHeader(id: String): MailHeaderEntity? = withContext(io) { dao.findHeader(id) }
+
+    suspend fun readMarkdown(id: String): String? = withContext(io) {
+        val path = dao.findHeader(id)?.bodyRelativePath.orEmpty()
+        if (path.isBlank()) null else bodies.readMarkdown(path)
+    }
+
+    /**
+     * 文件和库行一起写。行已经没了，或账号正在删除，就不落文件。
+     * 返回 false 时调用方稍后重试，已有文件保持原样。
+     */
+    suspend fun saveBody(
+        id: String,
+        html: String,
+        markdown: String,
+        preview: String,
+        processedAt: Long,
+    ): Boolean = writes.withLock {
+        withContext(io) {
+            val row = dao.findHeader(id) ?: return@withContext false
+            if (MailSyncGate.isDropped(row.accountId)) return@withContext false
+            val relative = bodyRelativeDir(row.accountId, row.remoteFolder, row.id)
+            bodies.write(relative, html, markdown)
+            dao.markBodyProcessed(row.id, relative, processedAt, preview)
+            true
         }
     }
 

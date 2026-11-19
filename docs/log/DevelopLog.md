@@ -6,7 +6,7 @@
 
 ## 现在到哪一步
 
-页面框架、账号接入、Task 2.1 首拉落库、Task 2.2 增量 / IDLE / 已读回写已做完。Task 0.1 列表时间分隔、Task 0.2 一周内的日期已做完。第 3 项已拆成 3.1 正文落文件、3.2 阅读与单个 WebView。下一步是 3.1。模型分类、手势与视觉还没开始。
+页面框架、账号接入、Task 2.1 首拉落库、Task 2.2 增量 / IDLE / 已读回写已做完。Task 0.1 列表时间分隔、Task 0.2 一周内的日期已做完。Task 3.1 正文落文件已做完。下一步是 3.2 阅读与单个 WebView。模型分类、手势与视觉还没开始。
 
 
 ## 已经有的
@@ -28,7 +28,7 @@
 
 1. 增量、IDLE 和已读回写已在 2.2 完成
 2. 列表时间分隔（0.1）已做完：投影里分桶，列表另画一条分隔
-3. 正文清洗落本地文件（3.1），再做 Markdown 阅读与单个 WebView（3.2）。列表不再读内存 `Mail.body`
+3. 正文清洗落本地文件（3.1）已做完。下一步是 Markdown 阅读与单个 WebView（3.2）。列表预览来自洗完的 Markdown，不再读内存 `Mail.body`
 4. DeepSeek 分类和标签池衰减
 5. 需求第 7 节手势：列表横滑开遮罩、长按多选、左右滑快捷操作。分隔线不接手势
 6. 样式、动效、流光等高完成度视觉
@@ -382,4 +382,15 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 
 - 相对关系从昨天开始：昨天，同一自然周里更早的仍是周一到周日。日期模式从昨天起仍是月日。
 - `:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。未跑 `testDebugUnitTest`：工程路径含「项目」时测试类仍会 ClassNotFound。
+
+## 2026-11-19 12:50
+
+完成 Task 3.1：拉取、清洗与落文件。
+
+- 库升到 version 4。信封增加正文目录、处理时间和列表预览。冲突更新不覆盖这三列。库里的预览非空时，快照不再用会话里的空预览盖掉。
+- IMAP 另开一条连接，只取非附件的 `text/html` 和 `text/plain`，用 BODY.PEEK，不改服务器已读。有 HTML 就用 HTML，否则把纯文本收成简单 HTML。
+- Jsoup 洗成安全 HTML，并抽出轻量 Markdown。外链图片默认换成占位，`loadRemoteImages` 留给 3.2。文件先写临时目录，成功再替换。失败留下已有文件和信头。
+- 前台一次洗一封。打开还没洗好的信时插到队首，内容区显示「正在整理这封邮件」。洗完用 Markdown 纯文本开头填列表预览，详情直接显示 Markdown。样例信仍走内存正文。
+- 删账号和 UIDVALIDITY 重建会清掉对应正文目录。`:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。清洗、落文件和快照合并的单测在 Gradle 之外跑过。`testDebugUnitTest` 仍因工程路径含「项目」无法启动测试类。
+- 下一步是 3.2：默认 Markdown 阅读已经能看，WebView 和原版式按钮还没接。
 

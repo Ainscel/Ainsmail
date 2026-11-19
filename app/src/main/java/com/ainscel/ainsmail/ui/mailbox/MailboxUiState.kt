@@ -101,12 +101,19 @@ data class AccountUi(
     val avatarFile: String? = null,
 )
 
+/** 详情这一帧怎么显示正文。等待时列表不受影响。 */
+@Immutable
+sealed interface DetailReading {
+    data object Waiting : DetailReading
+    data class Markdown(val text: String) : DetailReading
+}
+
 @Immutable
 data class MailDetailUi(
     val subject: String,
     val fromName: String,
     val metaLine: String,
-    val body: String,
+    val reading: DetailReading,
 )
 
 sealed interface MailboxIntent {

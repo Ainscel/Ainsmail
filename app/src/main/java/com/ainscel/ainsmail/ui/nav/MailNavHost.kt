@@ -2,6 +2,7 @@ package com.ainscel.ainsmail.ui.nav
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation3.runtime.NavBackStack
@@ -73,6 +74,7 @@ internal fun MailNavHost(
                 )
             }
             entry<MailDetailRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->
+                LaunchedEffect(route.mailId) { mailbox.onMailOpened(route.mailId) }
                 MailDetailPane(
                     detail = mailbox.detail(route.mailId),
                     onOriginalLayout = { onUnavailable(UnavailableKind.OriginalLayout) },

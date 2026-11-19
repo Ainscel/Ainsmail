@@ -153,7 +153,7 @@ fun MailboxSession.detailOf(
         subject = mail.subject,
         fromName = mail.fromName,
         metaLine = "$accountName · ${formatMailTime(mail.timeMillis, now, weekDate = weekDate)}",
-        body = mail.body,
+        reading = DetailReading.Markdown(mail.body),
     )
 }
 

@@ -62,7 +62,7 @@ private fun createStore(oauth: Boolean): Store {
     return session.getStore("imaps")
 }
 
-private fun looksLikeAuthFailure(message: String): Boolean {
+internal fun looksLikeAuthFailure(message: String): Boolean {
     val lower = message.lowercase()
     return "auth" in lower || "login" in lower || "credential" in lower || "oauth" in lower ||
         "invalid credentials" in lower || "authenticationfailed" in lower

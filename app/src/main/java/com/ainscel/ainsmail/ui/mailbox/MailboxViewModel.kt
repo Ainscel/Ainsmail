@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -20,10 +21,12 @@ import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.AccountDirectory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -35,6 +38,16 @@ sealed interface MailboxSyncHint {
     data class NeedsReauth(override val accountId: String) : MailboxSyncHint
     data class Failed(override val accountId: String) : MailboxSyncHint
 }
+
+/** 正文清洗由组合根接上。本类不引用数据库和 IMAP。 */
+class BodyWash(
+    val attach: (CoroutineScope) -> Unit,
+    val resume: (onNeedsReauth: (String) -> Unit) -> Unit,
+    val pause: () -> Unit,
+    val stop: () -> Unit,
+    val prioritize: (String) -> Unit,
+    val readMarkdown: suspend (String) -> String?,
+)
 
 /** 首拉结果。失败的账号不在 [readyIds] 里，这一轮不进入保活。 */
 data class InitialSyncResult(
@@ -58,6 +71,7 @@ class MailboxViewModel(
     private val pushSeen: suspend (List<String>) -> Unit,
     private val persistMails: suspend (List<Mail>) -> Unit,
     private val forgetAccounts: suspend (List<String>) -> Unit,
+    private val bodyWash: BodyWash,
     private val display: DisplayPreferences,
     private val io: CoroutineDispatcher,
 ) : ViewModel() {
@@ -93,10 +107,14 @@ class MailboxViewModel(
     )
     private var observeJob: Job? = null
     private var watchJob: Job? = null
+    private var openJob: Job? = null
+    private var openedId by mutableStateOf<String?>(null)
+    private var openedReading by mutableStateOf<DetailReading>(DetailReading.Waiting)
     /** 上一轮保活退出并关掉连接之后，下一轮才开始。 */
     private val watchLock = Mutex()
 
     init {
+        bodyWash.attach(viewModelScope)
         viewModelScope.launch {
             display.accountBadge.collect { style ->
                 if (style == badgeStyle) return@collect
@@ -162,6 +180,7 @@ class MailboxViewModel(
     fun setForeground(foreground: Boolean) {
         if (this.foreground == foreground) return
         this.foreground = foreground
+        if (foreground) resumeBody() else bodyWash.pause()
         restartWatch()
     }
 
@@ -192,7 +211,42 @@ class MailboxViewModel(
      */
     fun detail(id: String): MailDetailUi? {
         contentEpoch
-        return session.detailOf(id, System.currentTimeMillis(), weekDateStyle)
+        val structural = session.detailOf(id, System.currentTimeMillis(), weekDateStyle) ?: return null
+        if (showingSamples) return structural
+        val reading = if (openedId == id) openedReading else DetailReading.Waiting
+        return structural.copy(reading = reading)
+    }
+
+    /**
+     * 打开一封真信。已经洗好就读 Markdown；还没有就把这一封插到队首，内容区保持等待。
+     */
+    fun onMailOpened(id: String) {
+        if (showingSamples) return
+        if (openedId == id && (openJob?.isActive == true || openedReading is DetailReading.Markdown)) return
+        openedId = id
+        openedReading = DetailReading.Waiting
+        openJob?.cancel()
+        openJob = viewModelScope.launch {
+            val ready = session.mails.find { it.id == id }?.bodyReady == true
+            if (!ready) {
+                bodyWash.prioritize(id)
+                snapshotFlow {
+                    contentEpoch
+                    session.mails.find { it.id == id }?.bodyReady == true
+                }.first { it }
+            }
+            if (openedId != id || !currentCoroutineContext().isActive) return@launch
+            val text = try {
+                bodyWash.readMarkdown(id).orEmpty()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w("AinsmailBody", "read id=$id ${error.javaClass.simpleName}")
+                return@launch
+            }
+            if (openedId != id) return@launch
+            openedReading = DetailReading.Markdown(text)
+        }
     }
 
     /** 在组合里调用。和 [detail] 用同一次订阅。 */
@@ -273,6 +327,7 @@ class MailboxViewModel(
                 }
             }
         }
+        if (foreground) resumeBody()
         restartWatch()
     }
 
@@ -281,6 +336,16 @@ class MailboxViewModel(
         observeJob = null
         watchJob?.cancel()
         watchJob = null
+        openJob?.cancel()
+        openJob = null
+        bodyWash.stop()
+    }
+
+    private fun resumeBody() {
+        if (showingSamples || !foreground) return
+        bodyWash.resume { accountId ->
+            viewModelScope.launch { showHints(listOf(MailboxSyncHint.NeedsReauth(accountId))) }
+        }
     }
 
     private fun restartWatch() {
@@ -401,6 +466,7 @@ class MailboxViewModel(
             pushSeen: suspend (List<String>) -> Unit,
             persistMails: suspend (List<Mail>) -> Unit,
             forgetAccounts: suspend (List<String>) -> Unit,
+            bodyWash: BodyWash,
             display: DisplayPreferences,
             io: CoroutineDispatcher,
         ): ViewModelProvider.Factory {
@@ -418,6 +484,7 @@ class MailboxViewModel(
                         pushSeen,
                         persistMails,
                         forgetAccounts,
+                        bodyWash,
                         display,
                         io,
                     ) as T
