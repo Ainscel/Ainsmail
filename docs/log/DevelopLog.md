@@ -376,3 +376,10 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 周界与列表分隔相同，按设备时区的周一 0:00 到周日结束。偏好写在 `ainsmail-display`，切换时重算行和正文时间，不收信。
 - `:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。未跑 `testDebugUnitTest`：工程路径含「项目」时测试类仍会 ClassNotFound。
 
+## 2026-11-19 12:13
+
+今天的邮件两种日期模式都只显示时分，不再写「今天」。
+
+- 相对关系从昨天开始：昨天，同一自然周里更早的仍是周一到周日。日期模式从昨天起仍是月日。
+- `:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。未跑 `testDebugUnitTest`：工程路径含「项目」时测试类仍会 ClassNotFound。
+

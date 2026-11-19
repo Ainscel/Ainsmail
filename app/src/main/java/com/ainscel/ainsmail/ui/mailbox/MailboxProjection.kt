@@ -233,7 +233,7 @@ fun avatarLabel(name: String): String = name.filter { !it.isWhitespace() }.take(
 
 private val WeekdayLabels = arrayOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
-/** 把绝对时刻格式化成设备时区里的本地时间。今天只显示时分，更早显示月日。 */
+/** 把绝对时刻格式化成设备时区里的本地时间。今天只显示时分，日期从昨天开始。 */
 fun formatMailTime(
     epochMillis: Long,
     nowMillis: Long,
@@ -243,22 +243,18 @@ fun formatMailTime(
     val moment = Instant.ofEpochMilli(epochMillis).atZone(zone)
     val mailDate = moment.toLocalDate()
     val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
+    if (mailDate == today) return "%02d:%02d".format(moment.hour, moment.minute)
     if (weekDate == WeekDateStyle.Relative) {
         relativeWeekLabel(mailDate, today)?.let { return it }
     }
-    return if (mailDate == today) {
-        "%02d:%02d".format(moment.hour, moment.minute)
-    } else {
-        "${moment.monthValue}月${moment.dayOfMonth}日"
-    }
+    return "${moment.monthValue}月${moment.dayOfMonth}日"
 }
 
 /**
- * 今天、昨天，以及同一自然周里更早的周几。
+ * 昨天，以及同一自然周里更早或更晚的周几。今天不进这里。
  * 昨天即使落在上一周也用「昨天」。更早又跨周的返回空，改显示月日。
  */
 private fun relativeWeekLabel(mailDate: LocalDate, today: LocalDate): String? {
-    if (mailDate == today) return "今天"
     if (mailDate == today.minusDays(1)) return "昨天"
     if (!sameCalendarWeek(mailDate, today)) return null
     return WeekdayLabels[mailDate.dayOfWeek.value - 1]

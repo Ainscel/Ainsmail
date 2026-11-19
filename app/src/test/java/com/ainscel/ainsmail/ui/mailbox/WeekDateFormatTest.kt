@@ -19,10 +19,10 @@ class WeekDateFormatTest {
     }
 
     @Test
-    fun relativeStyleUsesTodayYesterdayAndWeekdayInsideThisWeek() {
+    fun relativeStyleStartsFromYesterday() {
         // 2026-11-18 是周三，本周从 11-16（周一）到 11-22（周日）。
         val now = at(2026, 11, 18, 9, 5)
-        assertEquals("今天", format(at(2026, 11, 18, 8, 0), now, WeekDateStyle.Relative))
+        assertEquals("08:00", format(at(2026, 11, 18, 8, 0), now, WeekDateStyle.Relative))
         assertEquals("昨天", format(at(2026, 11, 17, 23, 0), now, WeekDateStyle.Relative))
         assertEquals("周一", format(at(2026, 11, 16, 8, 0), now, WeekDateStyle.Relative))
         assertEquals("周五", format(at(2026, 11, 20, 8, 0), now, WeekDateStyle.Relative))
