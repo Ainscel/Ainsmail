@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -55,42 +56,45 @@ fun MailDetailPane(
             }
             return@Box
         }
-        Column(
-            Modifier
-                .holdWidthUntilSettled()
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-        ) {
-            Column(Modifier.padding(end = if (fullscreen != null) MailCapsuleHeight else 0.dp)) {
-                Text(text = detail.subject, style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = detail.fromName,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = detail.metaLine,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // 只让正文文字进入选择。右下角按钮和全屏按钮在这层外面，长按它们不会出复制菜单。
+        SelectionContainer(Modifier.fillMaxSize()) {
+            Column(
+                Modifier
+                    .holdWidthUntilSettled()
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+            ) {
+                Column(Modifier.padding(end = if (fullscreen != null) MailCapsuleHeight else 0.dp)) {
+                    Text(text = detail.subject, style = MaterialTheme.typography.headlineSmall)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = detail.fromName,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = detail.metaLine,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                when (val reading = detail.reading) {
+                    DetailReading.Waiting -> Text(
+                        text = stringResource(R.string.detail_body_waiting),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    is DetailReading.Markdown -> Text(
+                        text = reading.text,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+                // 给右下角三颗圆形按钮留出空档，正文滚到底时不会被挡住。
+                Spacer(
+                    Modifier.height(MailCapsuleHeight * 3 + DetailActionGap * 2 + MailChromeInset + 8.dp),
                 )
             }
-            Spacer(Modifier.height(16.dp))
-            when (val reading = detail.reading) {
-                DetailReading.Waiting -> Text(
-                    text = stringResource(R.string.detail_body_waiting),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                is DetailReading.Markdown -> Text(
-                    text = reading.text,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-            }
-            // 给右下角三颗圆形按钮留出空档，正文滚到底时不会被挡住。
-            Spacer(
-                Modifier.height(MailCapsuleHeight * 3 + DetailActionGap * 2 + MailChromeInset + 8.dp),
-            )
         }
         SplitFullscreenButton(
             modifier = Modifier

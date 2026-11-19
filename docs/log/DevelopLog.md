@@ -6,7 +6,7 @@
 
 ## 现在到哪一步
 
-页面框架、账号接入、Task 2.1 首拉落库、Task 2.2 增量 / IDLE / 已读回写已做完。Task 0.1 列表时间分隔、Task 0.2 一周内的日期已做完。Task 3.1 正文落文件已做完。下一步是 3.2 阅读与单个 WebView。模型分类、手势与视觉还没开始。
+页面框架、账号接入、Task 2.1 首拉落库、Task 2.2 增量 / IDLE / 已读回写已做完。Task 0.1 列表时间分隔、Task 0.2 一周内的日期、Task 0.3 正文长按选择已做完。Task 3.1 正文落文件已做完。下一步是 3.2 阅读与单个 WebView。模型分类、手势与视觉还没开始。
 
 
 ## 已经有的
@@ -393,4 +393,12 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 前台一次洗一封。打开还没洗好的信时插到队首，内容区显示「正在整理这封邮件」。洗完用 Markdown 纯文本开头填列表预览，详情直接显示 Markdown。样例信仍走内存正文。
 - 删账号和 UIDVALIDITY 重建会清掉对应正文目录。`:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。清洗、落文件和快照合并的单测在 Gradle 之外跑过。`testDebugUnitTest` 仍因工程路径含「项目」无法启动测试类。
 - 下一步是 3.2：默认 Markdown 阅读已经能看，WebView 和原版式按钮还没接。
+
+## 2026-11-19 14:05
+
+在 Task 0 下追加并完成 **0.3 正文长按选择**。
+
+- 详情的主题、寄件人、时间和 Markdown 正文放进 `SelectionContainer`，长按弹出系统的复制和全选。
+- 全屏按钮、右下角三颗按钮和「这封邮件不在了」不进选择。列表、分界线和清洗没动。
+- `:app:compileDebugKotlin` 通过。
 
