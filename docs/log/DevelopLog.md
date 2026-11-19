@@ -402,11 +402,3 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 全屏按钮、右下角三颗按钮和「这封邮件不在了」不进选择。列表、分界线和清洗没动。
 - `:app:compileDebugKotlin` 通过。
 
-## 2026-11-19 14:10
-
-详情里的 Markdown 链接不再把 `[文字](地址)` 原样画出来。
-
-- 文件里仍是轻量 Markdown。阅读时只显示链接文字，用蓝色标出，地址不出现在正文里。点一下用系统浏览器打开。
-- 已经洗好的信不用重洗。勾了 3.2 里「链接用系统浏览器打开」这一条。WebView 还没做。
-- `:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。链接拆分的 3 条单测在 Gradle 之外跑过。`testDebugUnitTest` 仍因工程路径含「项目」无法启动测试类。
-
