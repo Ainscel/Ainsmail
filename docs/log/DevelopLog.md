@@ -360,3 +360,11 @@ Gmail 登录从桌面回环改成 Android 客户端 + Play 授权。
 - 列表模型从 `rows: List<MailRowUi>` 改成 `entries`。分隔有自己的 key 和 contentType，不进邮件行的测量和淡出，也不吸顶。多选、已读、删除仍只认邮件 id。同一分钟继续复用整份条目。
 - `:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。`testDebugUnitTest` 仍因工程路径含「项目」无法启动测试类。
 
+## 2026-11-19 11:44
+
+「本周」改为与今天同一个自然周，不再从今天倒推 7 天。
+
+- 自然周是周一到周日。跨月、跨年的那几天仍归「本周」。本周以外、仍在本月的归「一周前」。
+- 列表日期和分桶都用邮件的绝对时刻，再按设备时区换算。手机设为北京时间时，看到的就是北京时间。
+- `:app:compileDebugKotlin` 与 `:app:compileDebugUnitTestKotlin` 通过。未跑 `testDebugUnitTest`：工程路径含「项目」时测试类仍会 ClassNotFound。
+

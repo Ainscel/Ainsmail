@@ -16,24 +16,36 @@ class TimeBucketTest {
     private val zone = ZoneId.of("Asia/Shanghai")
 
     @Test
-    fun sevenCalendarDaysStayInThisWeekEvenAcrossMonth() {
-        val today = at(2026, 12, 3, 23, 0)
-        assertEquals(TimeBucket.ThisWeek, timeBucket(at(2026, 12, 3, 0, 1), today, zone))
-        assertEquals(TimeBucket.ThisWeek, timeBucket(at(2026, 11, 26, 0, 30), today, zone))
+    fun thisWeekIsMondayThroughSundayAndMayCrossMonth() {
+        // 2026-12-02 是周三，这一周是 11-30（周一）到 12-06（周日）。
+        val today = at(2026, 12, 2, 23, 0)
+        assertEquals(TimeBucket.ThisWeek, timeBucket(at(2026, 12, 2, 0, 1), today, zone))
+        assertEquals(TimeBucket.ThisWeek, timeBucket(at(2026, 11, 30, 0, 30), today, zone))
+        assertEquals(TimeBucket.Month(11), timeBucket(at(2026, 11, 29, 23, 0), today, zone))
         assertEquals("本周", TimeBucket.ThisWeek.label())
     }
 
     @Test
-    fun futureMailStaysInThisWeek() {
-        val today = at(2026, 11, 18, 8, 0)
-        assertEquals(TimeBucket.ThisWeek, timeBucket(at(2026, 11, 20, 9, 0), today, zone))
+    fun thisWeekMayCrossYear() {
+        // 2027-01-01 是周五，这一周从 2026-12-28（周一）开始。
+        val today = at(2027, 1, 1, 8, 0)
+        assertEquals(TimeBucket.ThisWeek, timeBucket(at(2026, 12, 28, 9, 0), today, zone))
+        assertEquals(TimeBucket.Year(2026), timeBucket(at(2026, 12, 27, 9, 0), today, zone))
     }
 
     @Test
-    fun eighthDayInTheSameMonthIsEarlierThisMonth() {
+    fun laterThisWeekStaysInThisWeekAndNextWeekDoesNot() {
+        val today = at(2026, 11, 18, 8, 0)
+        assertEquals(TimeBucket.ThisWeek, timeBucket(at(2026, 11, 22, 9, 0), today, zone))
+        assertEquals(TimeBucket.EarlierThisMonth, timeBucket(at(2026, 11, 23, 9, 0), today, zone))
+    }
+
+    @Test
+    fun earlierThisMonthOutsideThisWeekIsEarlierThisMonth() {
+        // 2026-11-18 是周三，本周从 11-16 开始。11-15 仍是本月，但已是上一周。
         val today = at(2026, 11, 18, 23, 0)
-        assertEquals(TimeBucket.ThisWeek, timeBucket(at(2026, 11, 11, 0, 30), today, zone))
-        assertEquals(TimeBucket.EarlierThisMonth, timeBucket(at(2026, 11, 10, 23, 0), today, zone))
+        assertEquals(TimeBucket.ThisWeek, timeBucket(at(2026, 11, 16, 0, 30), today, zone))
+        assertEquals(TimeBucket.EarlierThisMonth, timeBucket(at(2026, 11, 15, 23, 0), today, zone))
         assertEquals("一周前", TimeBucket.EarlierThisMonth.label())
     }
 
@@ -109,10 +121,10 @@ class TimeBucketTest {
     }
 
     @Test
-    fun sameMinuteReusesDividersUntilTheDayBoundary() {
-        val mail = mail("only", at(2026, 11, 10, 8, 0))
+    fun sameMinuteReusesDividersUntilTheNextWeek() {
+        val mail = mail("only", at(2026, 11, 16, 8, 0))
         val session = session(mail)
-        val firstNow = at(2026, 11, 17, 10, 0)
+        val firstNow = at(2026, 11, 22, 10, 0)
         val first = project(session, firstNow, zone = zone)
         assertEquals(listOf("本周"), first.list.entries.filterIsInstance<MailListEntry.TimeDivider>().map { it.bucket.label() })
 
@@ -124,10 +136,10 @@ class TimeBucketTest {
         )
         assertSame(first.list.entries, reused.list.entries)
 
-        val nextDay = project(session, at(2026, 11, 18, 10, 0), zone = zone)
+        val nextWeek = project(session, at(2026, 11, 23, 10, 0), zone = zone)
         assertEquals(
             listOf("一周前"),
-            nextDay.list.entries.filterIsInstance<MailListEntry.TimeDivider>().map { it.bucket.label() },
+            nextWeek.list.entries.filterIsInstance<MailListEntry.TimeDivider>().map { it.bucket.label() },
         )
     }
 

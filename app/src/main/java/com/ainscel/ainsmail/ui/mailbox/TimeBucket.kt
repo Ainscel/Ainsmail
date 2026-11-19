@@ -1,8 +1,9 @@
 package com.ainscel.ainsmail.ui.mailbox
 
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
+import java.time.temporal.WeekFields
 
 /**
  * 列表上的时间档。只在投影里计算，不进邮件，也不进归约。
@@ -37,18 +38,24 @@ fun TimeBucket.listKey(): String = when (this) {
 }
 
 /**
- * 一封信只进第一档，按本地日期而不是满 24 小时。
- * 距今天不超过 7 天（含第 7 天）归本周，跨月、跨年也一样。
- * 日期晚于今天时天数差为负，同样归本周。
+ * 一封信只进第一档。日期按 [zone] 的本地日历，不是从今天倒推 7 天。
+ * 与今天同一个自然周（周一到周日，跨月、跨年也算）归本周。
  * 否则还在本月归「一周前」；还在本年按月份；更早按年份。
  */
 fun timeBucket(epochMillis: Long, nowMillis: Long, zone: ZoneId): TimeBucket {
     val mailDate = Instant.ofEpochMilli(epochMillis).atZone(zone).toLocalDate()
     val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
-    if (ChronoUnit.DAYS.between(mailDate, today) <= 7) return TimeBucket.ThisWeek
+    if (sameCalendarWeek(mailDate, today)) return TimeBucket.ThisWeek
     if (mailDate.year == today.year && mailDate.monthValue == today.monthValue) {
         return TimeBucket.EarlierThisMonth
     }
     if (mailDate.year == today.year) return TimeBucket.Month(mailDate.monthValue)
     return TimeBucket.Year(mailDate.year)
+}
+
+/** ISO 周：周一为一周的第一天。周跨年时用周年份，避免 12 月和 1 月被拆开。 */
+private fun sameCalendarWeek(mailDate: LocalDate, today: LocalDate): Boolean {
+    val week = WeekFields.ISO
+    return mailDate.get(week.weekBasedYear()) == today.get(week.weekBasedYear()) &&
+        mailDate.get(week.weekOfWeekBasedYear()) == today.get(week.weekOfWeekBasedYear())
 }

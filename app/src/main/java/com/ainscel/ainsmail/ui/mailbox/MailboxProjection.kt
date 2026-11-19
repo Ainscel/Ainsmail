@@ -222,6 +222,7 @@ fun avatarHue(name: String): Float = ((name.hashCode() and 0x7fffffff) % 360).to
 /** 中文取前两个字，拉丁字母取前两个字母。空白不算。 */
 fun avatarLabel(name: String): String = name.filter { !it.isWhitespace() }.take(2)
 
+/** 把绝对时刻格式化成设备时区里的本地时间。今天只显示时分，更早显示月日。 */
 fun formatMailTime(
     epochMillis: Long,
     nowMillis: Long,
