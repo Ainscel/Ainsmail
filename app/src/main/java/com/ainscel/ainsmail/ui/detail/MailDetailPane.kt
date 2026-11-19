@@ -85,10 +85,7 @@ fun MailDetailPane(
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    is DetailReading.Markdown -> Text(
-                        text = reading.text,
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
+                    is DetailReading.Markdown -> ReadingMarkdownText(reading.text)
                 }
                 // 给右下角三颗圆形按钮留出空档，正文滚到底时不会被挡住。
                 Spacer(
