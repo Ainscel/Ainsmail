@@ -83,10 +83,13 @@ fun SettingsSectionPane(
             )
         }
         SettingsSection.Display -> {
-            val style by display.accountBadge.collectAsState()
+            val badge by display.accountBadge.collectAsState()
+            val weekDate by display.weekDateStyle.collectAsState()
             DisplaySettings(
-                style = style,
-                onSelect = display::setAccountBadge,
+                badgeStyle = badge,
+                onBadge = display::setAccountBadge,
+                weekDate = weekDate,
+                onWeekDate = display::setWeekDateStyle,
                 title = title,
                 onBack = onBack,
                 modifier = modifier,

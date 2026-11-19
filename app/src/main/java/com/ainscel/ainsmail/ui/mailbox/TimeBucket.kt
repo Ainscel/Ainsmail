@@ -54,7 +54,7 @@ fun timeBucket(epochMillis: Long, nowMillis: Long, zone: ZoneId): TimeBucket {
 }
 
 /** ISO 周：周一为一周的第一天。周跨年时用周年份，避免 12 月和 1 月被拆开。 */
-private fun sameCalendarWeek(mailDate: LocalDate, today: LocalDate): Boolean {
+internal fun sameCalendarWeek(mailDate: LocalDate, today: LocalDate): Boolean {
     val week = WeekFields.ISO
     return mailDate.get(week.weekBasedYear()) == today.get(week.weekBasedYear()) &&
         mailDate.get(week.weekOfWeekBasedYear()) == today.get(week.weekOfWeekBasedYear())

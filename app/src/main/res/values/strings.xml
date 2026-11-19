@@ -103,6 +103,10 @@
     <string name="settings_account_badge_every">每封都显示</string>
     <string name="settings_account_badge_first">相同账户连续邮件合并显示</string>
     <string name="settings_account_badge_sender">相同账户连续相同寄件人合并展示</string>
+    <string name="settings_week_date">一星期内的日期</string>
+    <string name="settings_week_date_hint">只影响本周。始终显示日期时，今天仍显示时间。本周以外仍是月日。</string>
+    <string name="settings_week_date_calendar">始终按照日期显示</string>
+    <string name="settings_week_date_relative">按照相对关系显示</string>
     <string name="settings_notifications">通知</string>
     <string name="settings_privacy">隐私</string>
     <string name="settings_secrets">密钥</string>

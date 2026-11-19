@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.ainscel.ainsmail.data.prefs.DisplayPreferences
 import com.ainscel.ainsmail.model.Account
 import com.ainscel.ainsmail.model.AccountBadgeStyle
+import com.ainscel.ainsmail.model.WeekDateStyle
 import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.MailboxScope
 import com.ainscel.ainsmail.model.Section
@@ -82,7 +83,14 @@ class MailboxViewModel(
     private var rowMinute = initialNow / 60_000L
     /** 收件账户小圆的重复方式。和会话无关，换它时不能沿用上一份行。 */
     private var badgeStyle: AccountBadgeStyle = display.accountBadge.value
-    private val initial = project(session, initialNow, badgeStyle = badgeStyle)
+    /** 本周日期的写法。换它时同样不能沿用上一份行。 */
+    private var weekDateStyle by mutableStateOf(display.weekDateStyle.value)
+    private val initial = project(
+        session,
+        initialNow,
+        badgeStyle = badgeStyle,
+        weekDate = weekDateStyle,
+    )
     private var observeJob: Job? = null
     private var watchJob: Job? = null
     /** 上一轮保活退出并关掉连接之后，下一轮才开始。 */
@@ -93,6 +101,13 @@ class MailboxViewModel(
             display.accountBadge.collect { style ->
                 if (style == badgeStyle) return@collect
                 badgeStyle = style
+                publish(session, restyleRows = true)
+            }
+        }
+        viewModelScope.launch {
+            display.weekDateStyle.collect { style ->
+                if (style == weekDateStyle) return@collect
+                weekDateStyle = style
                 publish(session, restyleRows = true)
             }
         }
@@ -177,7 +192,7 @@ class MailboxViewModel(
      */
     fun detail(id: String): MailDetailUi? {
         contentEpoch
-        return session.detailOf(id, System.currentTimeMillis())
+        return session.detailOf(id, System.currentTimeMillis(), weekDateStyle)
     }
 
     /** 在组合里调用。和 [detail] 用同一次订阅。 */
@@ -358,7 +373,7 @@ class MailboxViewModel(
             null
         }
         rowMinute = now / 60_000L
-        val projected = project(session, now, chrome.accounts, reuse, badgeStyle)
+        val projected = project(session, now, chrome.accounts, reuse, badgeStyle, weekDateStyle)
         if (projected.chrome != chrome) chrome = projected.chrome
         if (projected.list != list) list = projected.list
         val nextPlace = MailboxPlace(session.scope, session.section)

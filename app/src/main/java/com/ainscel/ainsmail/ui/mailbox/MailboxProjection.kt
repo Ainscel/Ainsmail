@@ -6,10 +6,12 @@ import com.ainscel.ainsmail.model.Mail
 import com.ainscel.ainsmail.model.MailType
 import com.ainscel.ainsmail.model.MailboxScope
 import com.ainscel.ainsmail.model.Section
+import com.ainscel.ainsmail.model.WeekDateStyle
 import com.ainscel.ainsmail.model.inScope
 import com.ainscel.ainsmail.model.inSection
 import com.ainscel.ainsmail.model.TagPool
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 
 data class MailboxProjection(
@@ -55,6 +57,7 @@ fun project(
     previousAccounts: List<AccountUi> = emptyList(),
     reuse: ListReuse? = null,
     badgeStyle: AccountBadgeStyle = AccountBadgeStyle.EveryRow,
+    weekDate: WeekDateStyle = WeekDateStyle.Date,
     zone: ZoneId = ZoneId.systemDefault(),
 ): MailboxProjection {
     val sectionMailIds: Set<String>
@@ -65,7 +68,7 @@ fun project(
         entries = reuse.entries
         groups = reuse.tagGroups
     } else {
-        val built = scanRows(session, now, badgeStyle, zone)
+        val built = scanRows(session, now, badgeStyle, weekDate, zone)
         sectionMailIds = built.sectionMailIds
         entries = built.entries
         groups = tagGroups(session)
@@ -101,6 +104,7 @@ private fun scanRows(
     session: MailboxSession,
     now: Long,
     badgeStyle: AccountBadgeStyle,
+    weekDate: WeekDateStyle,
     zone: ZoneId,
 ): ScannedRows {
     val showAccount = session.scope is MailboxScope.All
@@ -130,7 +134,7 @@ private fun scanRows(
             AccountBadgeStyle.SameSender ->
                 mail.accountId != previousAccountId || mail.fromName != previousFromName
         }
-        entries.add(MailListEntry.Row(toRow(session, mail, now, zone, showBadge, accountsById)))
+        entries.add(MailListEntry.Row(toRow(session, mail, now, zone, weekDate, showBadge, accountsById)))
         previousAccountId = mail.accountId
         previousFromName = mail.fromName
     }
@@ -138,13 +142,17 @@ private fun scanRows(
 }
 
 /** 按导航给出的 id 取正文展示。打开哪封信不写进会话，这里也不读列表行。 */
-fun MailboxSession.detailOf(id: String, now: Long): MailDetailUi? {
+fun MailboxSession.detailOf(
+    id: String,
+    now: Long,
+    weekDate: WeekDateStyle = WeekDateStyle.Date,
+): MailDetailUi? {
     val mail = mails.find { it.id == id } ?: return null
     val accountName = accounts.find { it.id == mail.accountId }?.name.orEmpty()
     return MailDetailUi(
         subject = mail.subject,
         fromName = mail.fromName,
-        metaLine = "$accountName · ${formatMailTime(mail.timeMillis, now)}",
+        metaLine = "$accountName · ${formatMailTime(mail.timeMillis, now, weekDate = weekDate)}",
         body = mail.body,
     )
 }
@@ -180,6 +188,7 @@ private fun toRow(
     mail: Mail,
     now: Long,
     zone: ZoneId,
+    weekDate: WeekDateStyle,
     showAccountBadge: Boolean,
     accountsById: Map<String, Account>,
 ): MailRowUi {
@@ -189,7 +198,7 @@ private fun toRow(
         fromName = mail.fromName,
         subject = mail.subject,
         preview = mail.preview,
-        timeLabel = formatMailTime(mail.timeMillis, now, zone),
+        timeLabel = formatMailTime(mail.timeMillis, now, zone, weekDate),
         unread = mail.unread,
         accountName = if (showAccountBadge) account?.name else null,
         senderLabel = avatarLabel(mail.fromName),
@@ -222,17 +231,35 @@ fun avatarHue(name: String): Float = ((name.hashCode() and 0x7fffffff) % 360).to
 /** 中文取前两个字，拉丁字母取前两个字母。空白不算。 */
 fun avatarLabel(name: String): String = name.filter { !it.isWhitespace() }.take(2)
 
+private val WeekdayLabels = arrayOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
 /** 把绝对时刻格式化成设备时区里的本地时间。今天只显示时分，更早显示月日。 */
 fun formatMailTime(
     epochMillis: Long,
     nowMillis: Long,
     zone: ZoneId = ZoneId.systemDefault(),
+    weekDate: WeekDateStyle = WeekDateStyle.Date,
 ): String {
     val moment = Instant.ofEpochMilli(epochMillis).atZone(zone)
+    val mailDate = moment.toLocalDate()
     val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
-    return if (moment.toLocalDate() == today) {
+    if (weekDate == WeekDateStyle.Relative) {
+        relativeWeekLabel(mailDate, today)?.let { return it }
+    }
+    return if (mailDate == today) {
         "%02d:%02d".format(moment.hour, moment.minute)
     } else {
         "${moment.monthValue}月${moment.dayOfMonth}日"
     }
+}
+
+/**
+ * 今天、昨天，以及同一自然周里更早的周几。
+ * 昨天即使落在上一周也用「昨天」。更早又跨周的返回空，改显示月日。
+ */
+private fun relativeWeekLabel(mailDate: LocalDate, today: LocalDate): String? {
+    if (mailDate == today) return "今天"
+    if (mailDate == today.minusDays(1)) return "昨天"
+    if (!sameCalendarWeek(mailDate, today)) return null
+    return WeekdayLabels[mailDate.dayOfWeek.value - 1]
 }
