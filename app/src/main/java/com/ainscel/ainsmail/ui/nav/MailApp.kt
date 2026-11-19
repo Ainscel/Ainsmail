@@ -1,22 +1,17 @@
 package com.ainscel.ainsmail.ui.nav
 
 import android.app.Activity
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -27,82 +22,152 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation3.runtime.NavKey
-import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
-import androidx.navigation3.ui.NavDisplay
 import com.ainscel.ainsmail.R
+import com.ainscel.ainsmail.data.SampleAccounts
+import com.ainscel.ainsmail.data.mail.MailFirstSync
+import com.ainscel.ainsmail.data.mail.MailLiveSync
+import com.ainscel.ainsmail.data.mail.MailBodyPipeline
+import com.ainscel.ainsmail.data.mail.MailLocalStore
+import com.ainscel.ainsmail.data.mail.MailSyncGate
+import com.ainscel.ainsmail.data.mail.scheduleInboxSync
+import com.ainscel.ainsmail.data.sampleCatalog
+import com.ainscel.ainsmail.data.sampleMails
+import com.ainscel.ainsmail.model.MailboxScope
+import com.ainscel.ainsmail.model.Provider
+import com.ainscel.ainsmail.security.AccountBook
 import com.ainscel.ainsmail.security.SecretStore
-import com.ainscel.ainsmail.ui.detail.ComposePlaceholder
-import com.ainscel.ainsmail.ui.detail.MailDetailPane
-import com.ainscel.ainsmail.ui.list.MailListPane
+import com.ainscel.ainsmail.ui.account.AccountLoginLayer
+import com.ainscel.ainsmail.ui.account.AccountLoginViewModel
+import com.ainscel.ainsmail.data.mail.FirstSyncOutcome
+import com.ainscel.ainsmail.data.prefs.DisplayPreferences
+import com.ainscel.ainsmail.ui.mailbox.InitialSyncResult
+import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
+import com.ainscel.ainsmail.ui.mailbox.MailboxSyncHint
+import com.ainscel.ainsmail.ui.mailbox.BodyWash
 import com.ainscel.ainsmail.ui.mailbox.MailboxViewModel
-import com.ainscel.ainsmail.ui.settings.SettingsHomePane
-import com.ainscel.ainsmail.ui.settings.SettingsSection
-import com.ainscel.ainsmail.ui.settings.SettingsSectionPane
 import com.ainscel.ainsmail.ui.shell.AccountOverlay
 import com.ainscel.ainsmail.ui.shell.OverlayController
 import com.ainscel.ainsmail.ui.shell.isWideWindow
-import kotlinx.serialization.Serializable
-
-@Serializable
-data object MailListRoute : NavKey
-
-@Serializable
-data class MailDetailRoute(val mailId: String) : NavKey
-
-@Serializable
-data object SettingsHomeRoute : NavKey
-
-@Serializable
-data class SettingsSectionRoute(val section: SettingsSection) : NavKey
-
-@Serializable
-data class ComposeRoute(val mailId: String? = null) : NavKey
+import com.ainscel.ainsmail.ui.shell.rememberSplitFraction
+import kotlinx.coroutines.Dispatchers
 
 @Composable
-fun MailApp(
-    secretStore: SecretStore,
-    modifier: Modifier = Modifier,
-) {
-    val mailbox = viewModel<MailboxViewModel>()
+fun MailApp(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val appContext = context.applicationContext
+    val secrets = remember { SecretStore(appContext) }
+    val book = remember { AccountBook(appContext, secrets) }
+    val display = remember { DisplayPreferences(appContext) }
+    val mailStore = remember { MailLocalStore(appContext, Dispatchers.IO) }
+    val firstSync = remember(book, mailStore) { MailFirstSync(book, mailStore, Dispatchers.IO) }
+    val liveSync = remember(book, mailStore) { MailLiveSync(book, mailStore, Dispatchers.IO) }
+    val bodyWash = remember(book, mailStore) {
+        val pipeline = MailBodyPipeline(book, mailStore, Dispatchers.IO)
+        BodyWash(
+            attach = pipeline::attach,
+            resume = pipeline::resume,
+            pause = pipeline::pause,
+            stop = pipeline::stop,
+            prioritize = pipeline::prioritize,
+            readMarkdown = mailStore::readMarkdown,
+        )
+    }
+    val mailboxFactory = remember(book, mailStore, firstSync, liveSync, display, bodyWash) {
+        MailboxViewModel.factory(
+            accounts = SampleAccounts,
+            mails = sampleMails(System.currentTimeMillis()),
+            catalog = sampleCatalog(),
+            book = book,
+            observeMails = mailStore::observeMails,
+            syncAccounts = { ids -> initialSync(mailStore, firstSync, ids) },
+            watchScope = { ids, section, onHint ->
+                liveSync.watch(ids, section) { outcome ->
+                    outcome.toHint()?.let(onHint)
+                }
+            },
+            pushSeen = liveSync::pushSeen,
+            persistMails = mailStore::persistLocalMails,
+            forgetAccounts = firstSync::forgetAccounts,
+            bodyWash = bodyWash,
+            display = display,
+            io = Dispatchers.IO,
+        )
+    }
+    val mailbox = viewModel<MailboxViewModel>(factory = mailboxFactory)
+    val login = viewModel<AccountLoginViewModel>(factory = AccountLoginViewModel.factory(context, book))
+    val chrome = mailbox.chrome
     val backStack = rememberNavBackStack(MailListRoute)
     val overlay = remember { OverlayController() }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val undoLabel = stringResource(R.string.undo)
-    val originalPending = stringResource(R.string.detail_original_pending)
-    val editPending = stringResource(R.string.detail_edit_pending)
-    val deletedMessage = stringResource(R.string.list_deleted)
-    val loginPending = stringResource(R.string.account_add_login_pending)
-    val groupPending = stringResource(R.string.account_add_group_pending)
     val allAccounts = stringResource(R.string.account_all)
     var addDialog by rememberSaveable { mutableStateOf(false) }
-    val splitFraction = rememberSaveable { mutableFloatStateOf(0.40f) }
-    // 上一版默认是 34%，已经存下来的比例改到现在的 40%。左栏下限是 35%。
-    if (splitFraction.floatValue == 0.34f) splitFraction.floatValue = 0.40f
-    if (splitFraction.floatValue < 0.35f) splitFraction.floatValue = 0.35f
-    val context = LocalContext.current
+    var unavailable by remember { mutableStateOf<UnavailableHint?>(null) }
+    val splitFraction = rememberSplitFraction()
+    var scrolling by remember { mutableStateOf(false) }
+    var resizing by remember { mutableStateOf(false) }
+    val processLifecycle = remember { ProcessLifecycleOwner.get().lifecycle }
 
-    LaunchedEffect(mailbox.accountId, mailbox.folder, mailbox.mails.toList()) {
+    DisposableEffect(processLifecycle, mailbox) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    MailSyncGate.foreground = true
+                    mailbox.setForeground(true)
+                }
+                Lifecycle.Event.ON_STOP -> {
+                    MailSyncGate.foreground = false
+                    mailbox.setForeground(false)
+                }
+                else -> Unit
+            }
+        }
+        processLifecycle.addObserver(observer)
+        if (processLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            MailSyncGate.foreground = true
+            mailbox.setForeground(true)
+        }
+        onDispose {
+            processLifecycle.removeObserver(observer)
+            MailSyncGate.foreground = false
+            mailbox.setForeground(false)
+        }
+    }
+    LaunchedEffect(mailbox) {
+        appContext.onlineNetwork().collect { mailbox.setOnline(it) }
+    }
+    LaunchedEffect(Unit) { scheduleInboxSync(appContext) }
+    LaunchedEffect(scrolling, resizing, overlay.animating) {
+        mailbox.setSnapshotPaused(scrolling || resizing || overlay.animating)
+    }
+
+    MailboxNoticeEffect(
+        notice = chrome.notice,
+        hostState = snackbarHostState,
+        onUndo = { mailbox.perform(MailboxIntent.Undo) },
+        onConsumed = { mailbox.perform(MailboxIntent.ConsumeNotice(it)) },
+    )
+    UnavailableHintEffect(
+        hint = unavailable,
+        hostState = snackbarHostState,
+        onConsumed = { unavailable = null },
+    )
+    LaunchedEffect(login.saved.tick) {
+        val saved = login.saved
+        if (saved.tick == 0L) return@LaunchedEffect
+        val id = saved.accountId ?: return@LaunchedEffect
+        mailbox.perform(MailboxIntent.ClearReauth(id))
+    }
+    LaunchedEffect(chrome.sectionMailIds) {
         val openId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId ?: return@LaunchedEffect
-        val mail = mailbox.mails.find { it.id == openId }
-        val inScope = mail != null &&
-            (mailbox.accountId == null || mail.accountId == mailbox.accountId) &&
-            mail.folder == mailbox.folder
-        if (!inScope) backStack.removeAll { it is MailDetailRoute }
+        if (openId !in chrome.sectionMailIds) backStack.removeAll { it is MailDetailRoute }
     }
-
-    LaunchedEffect(mailbox.notice?.id) {
-        val current = mailbox.notice ?: return@LaunchedEffect
-        val result = snackbarHostState.showSnackbar(
-            message = current.text,
-            actionLabel = if (current.undo != null) undoLabel else null,
-        )
-        if (result == SnackbarResult.ActionPerformed) current.undo?.invoke()
-        if (mailbox.notice?.id == current.id) mailbox.notice = null
-    }
+    OverlayBackHandler(overlay, scope)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -110,89 +175,49 @@ fun MailApp(
     ) { innerPadding ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(innerPadding)) {
             val wide = isWideWindow(maxWidth)
-            val strategy = rememberTwoPaneStrategy(wide, splitFraction)
+            val strategy = rememberTwoPaneStrategy(wide, splitFraction) { resizing = it }
             val panelWidth = minOf(300.dp, maxWidth * 0.88f)
             val panelWidthPx = with(LocalDensity.current) { panelWidth.toPx() }
             Box(Modifier.fillMaxSize()) {
-                NavDisplay(
+                MailNavHost(
+                    mailbox = mailbox,
+                    book = book,
+                    secrets = secrets,
+                    display = display,
+                    onRelogin = { account ->
+                        when (account.provider) {
+                            Provider.Gmail -> (context as? Activity)?.let(login::startGmail)
+                            Provider.Qq -> login.openQq(account.address, account.name)
+                        }
+                    },
                     backStack = backStack,
-                    modifier = Modifier.fillMaxSize(),
-                    onBack = {
-                        if (backStack.size > 1) {
-                            backStack.removeLastOrNull()
-                        } else {
-                            (context as? Activity)?.finish()
-                        }
+                    overlay = overlay,
+                    scope = scope,
+                    strategy = strategy,
+                    onUnavailable = { kind ->
+                        unavailable = UnavailableHint(kind, System.nanoTime())
                     },
-                    sceneStrategies = listOf(strategy),
-                    entryProvider = entryProvider {
-                        entry<MailListRoute>(metadata = TwoPaneStrategy.primaryPane()) {
-                            MailListPane(
-                                mailbox = mailbox,
-                                openMailId = backStack.filterIsInstance<MailDetailRoute>().lastOrNull()?.mailId,
-                                overlay = overlay,
-                                overlayWidthPx = panelWidthPx,
-                                onOpenMail = { id -> openMail(backStack, id) },
-                                onCompose = { backStack.add(ComposeRoute()) },
-                            )
-                        }
-                        entry<MailDetailRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->
-                            val mail = mailbox.mails.find { it.id == route.mailId }
-                            MailDetailPane(
-                                mail = mail,
-                                accountName = mail?.let { mailbox.account(it.accountId)?.name }.orEmpty(),
-                                onClose = { backStack.removeAll { it is MailDetailRoute } },
-                                onOriginalLayout = { mailbox.message(originalPending) },
-                                onEdit = { mailbox.message(editPending) },
-                                onDelete = {
-                                    mailbox.deleteMail(route.mailId, deletedMessage)
-                                    backStack.removeAll { it is MailDetailRoute }
-                                },
-                            )
-                        }
-                        entry<SettingsHomeRoute>(metadata = TwoPaneStrategy.primaryPane()) {
-                            SettingsHomePane(
-                                selected = backStack.filterIsInstance<SettingsSectionRoute>().lastOrNull()?.section,
-                                onBack = {
-                                    backStack.removeAll {
-                                        it is SettingsHomeRoute || it is SettingsSectionRoute
-                                    }
-                                },
-                                onOpen = { section -> openSettingsSection(backStack, section) },
-                            )
-                        }
-                        entry<SettingsSectionRoute>(metadata = TwoPaneStrategy.secondaryPane()) { route ->
-                            SettingsSectionPane(
-                                section = route.section,
-                                store = secretStore,
-                                onBack = { backStack.removeLastOrNull() },
-                            )
-                        }
-                        entry<ComposeRoute> { route ->
-                            val subject = route.mailId?.let { id ->
-                                mailbox.mails.find { it.id == id }?.subject
-                            }
-                            ComposePlaceholder(
-                                replySubject = subject,
-                                onBack = { backStack.removeLastOrNull() },
-                            )
-                        }
-                    },
+                    onExit = { (context as? Activity)?.finish() },
+                    onScrollActive = { scrolling = it },
                 )
                 AccountOverlay(
-                    progress = overlay.progress,
+                    progress = overlay::progress,
                     panelWidth = panelWidth,
                     panelWidthPx = panelWidthPx,
-                    accounts = mailbox.accounts,
-                    selectedAccountId = mailbox.accountId,
-                    currentName = mailbox.account(mailbox.accountId ?: "")?.name ?: allAccounts,
-                    folder = mailbox.folder,
-                    onSelectAccount = {
-                        mailbox.selectAccount(it)
+                    accounts = chrome.accounts,
+                    selectedAccountId = (chrome.scope as? MailboxScope.Account)?.id,
+                    currentName = chrome.selectedAccountName ?: allAccounts,
+                    section = chrome.section,
+                    onSelectAccount = { id ->
+                        mailbox.perform(
+                            MailboxIntent.SelectScope(
+                                if (id == null) MailboxScope.All else MailboxScope.Account(id),
+                            ),
+                        )
                         overlay.close(scope)
                     },
-                    onSelectFolder = {
-                        mailbox.selectFolder(it)
+                    onSelectSection = {
+                        mailbox.perform(MailboxIntent.SelectSection(it))
                         overlay.close(scope)
                     },
                     onAdd = { addDialog = true },
@@ -201,59 +226,47 @@ fun MailApp(
                         if (backStack.none { it is SettingsHomeRoute }) backStack.add(SettingsHomeRoute)
                     },
                     onClose = { overlay.close(scope) },
-                    onDrag = { overlay.dragBy(it, panelWidthPx) },
-                    onDragFinish = { overlay.release(scope) },
                 )
             }
         }
     }
 
-    BackHandler(enabled = overlay.progress > 0.02f) {
-        overlay.close(scope)
-    }
-
     if (addDialog) {
-        AlertDialog(
-            onDismissRequest = { addDialog = false },
-            confirmButton = {
-                TextButton(onClick = { addDialog = false }) {
-                    Text(stringResource(R.string.list_cancel))
-                }
+        AddAccountDialog(
+            onDismiss = { addDialog = false },
+            onLogin = {
+                addDialog = false
+                login.openProviders()
             },
-            title = { Text(stringResource(R.string.account_add)) },
-            text = {
-                androidx.compose.foundation.layout.Column {
-                    TextButton(onClick = {
-                        addDialog = false
-                        mailbox.message(loginPending)
-                    }) {
-                        Text(stringResource(R.string.account_add_login))
-                    }
-                    TextButton(onClick = {
-                        addDialog = false
-                        mailbox.message(groupPending)
-                    }) {
-                        Text(stringResource(R.string.account_add_group))
-                    }
-                }
+            onGroup = {
+                addDialog = false
+                unavailable = UnavailableHint(UnavailableKind.Group, System.nanoTime())
             },
         )
     }
+    AccountLoginLayer(
+        login = login,
+        snackbarHostState = snackbarHostState,
+    )
 }
 
-private fun openSettingsSection(
-    backStack: androidx.navigation3.runtime.NavBackStack<NavKey>,
-    section: SettingsSection,
-) {
-    val current = backStack.lastOrNull()
-    if (current is SettingsSectionRoute && current.section == section) return
-    backStack.removeAll { it is SettingsSectionRoute }
-    backStack.add(SettingsSectionRoute(section))
+private suspend fun initialSync(
+    mailStore: MailLocalStore,
+    firstSync: MailFirstSync,
+    ids: List<String>,
+): InitialSyncResult {
+    val need = ids.filter { mailStore.needsInitialSync(it) }
+    if (need.isEmpty()) return InitialSyncResult(hints = emptyList(), readyIds = ids)
+    val hints = firstSync.syncAll(need).mapNotNull { it.toHint() }
+    val failed = hints.map { it.accountId }.toSet()
+    return InitialSyncResult(
+        hints = hints,
+        readyIds = ids.filter { it !in failed },
+    )
 }
 
-private fun openMail(backStack: androidx.navigation3.runtime.NavBackStack<NavKey>, id: String) {
-    val current = backStack.lastOrNull()
-    if (current is MailDetailRoute && current.mailId == id) return
-    backStack.removeAll { it is MailDetailRoute }
-    backStack.add(MailDetailRoute(id))
+private fun FirstSyncOutcome.toHint(): MailboxSyncHint? = when (this) {
+    FirstSyncOutcome.Ok -> null
+    is FirstSyncOutcome.NeedsReauth -> MailboxSyncHint.NeedsReauth(accountId)
+    is FirstSyncOutcome.Failed -> MailboxSyncHint.Failed(accountId)
 }

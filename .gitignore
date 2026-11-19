@@ -13,3 +13,4 @@ captures/
 *.aab
 output-metadata.json
 .DS_Store
+docs/

@@ -3,40 +3,89 @@ package com.ainscel.ainsmail.security
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import org.json.JSONObject
+import kotlinx.serialization.SerializationException
 import java.io.File
+import java.security.GeneralSecurityException
 import java.security.KeyStore
+import java.util.concurrent.CancellationException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** 用系统密钥库里的密钥加密本地配置。密钥、客户端 ID 和刷新令牌都走这里，不写日志。 */
+/**
+ * 用系统密钥库加密本地配置。
+ * 全局的 DeepSeek 和 Google Android 客户端 ID 在 [Secrets]。
+ * 按账号的授权码和访问令牌在同一份文件的另一段，不进 [Secrets]，也不写日志。
+ */
 class SecretStore(context: Context) {
     private val file = File(context.applicationContext.filesDir, FILE_NAME)
-    private val keyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
+    private val gate = gateFor(file.absolutePath)
+    private val keyStore: KeyStore by lazy {
+        KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
+    }
 
-    fun read(): Secrets {
-        synchronized(file) {
-            if (!file.exists()) return Secrets()
+    fun read(): SecretRead = when (val loaded = load()) {
+        is Loaded.Ok -> SecretRead.Ok(loaded.document.toSecrets())
+        Loaded.Missing -> SecretRead.Missing
+        is Loaded.Unreadable -> SecretRead.Unreadable(loaded.cause)
+    }
+
+    fun readAccounts(): AccountRead = when (val loaded = load()) {
+        is Loaded.Ok -> AccountRead.Ok(loaded.document.accounts)
+        Loaded.Missing -> AccountRead.Missing
+        is Loaded.Unreadable -> AccountRead.Unreadable(loaded.cause)
+    }
+
+    /** 只替换全局配置。文件里已有的账号段保持不动。 */
+    fun write(secrets: Secrets) {
+        synchronized(gate) {
+            val current = when (val loaded = load()) {
+                is Loaded.Ok -> loaded.document
+                Loaded.Missing -> SecretDocument()
+                is Loaded.Unreadable -> throw loaded.cause
+            }
+            persist(current.replacingSecrets(secrets))
+        }
+    }
+
+    /** 只替换账号段。全局配置保持不动。读不出来时不写，避免把密钥覆盖掉。 */
+    fun writeAccounts(accounts: List<AccountRecord>) {
+        synchronized(gate) {
+            val current = when (val loaded = load()) {
+                is Loaded.Ok -> loaded.document
+                Loaded.Missing -> SecretDocument()
+                is Loaded.Unreadable -> throw loaded.cause
+            }
+            persist(current.replacingAccounts(accounts))
+        }
+    }
+
+    private fun load(): Loaded {
+        synchronized(gate) {
+            if (!file.exists()) return Loaded.Missing
             return try {
-                Secrets.fromJson(String(decrypt(file.readBytes()), Charsets.UTF_8))
-            } catch (_: Exception) {
-                file.delete()
-                Secrets()
+                Loaded.Ok(parseSecretDocument(String(decrypt(file.readBytes()), Charsets.UTF_8)))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (error.isCorrupt()) {
+                    file.delete()
+                    Loaded.Missing
+                } else {
+                    Loaded.Unreadable(error)
+                }
             }
         }
     }
 
-    fun write(secrets: Secrets) {
-        synchronized(file) {
-            val encoded = encrypt(secrets.normalized().toJson().toByteArray(Charsets.UTF_8))
-            val temporary = File(file.parentFile, "$FILE_NAME.tmp")
-            temporary.writeBytes(encoded)
-            if (!temporary.renameTo(file)) {
-                file.writeBytes(encoded)
-                temporary.delete()
-            }
+    private fun persist(document: SecretDocument) {
+        val encoded = encrypt(document.encode().toByteArray(Charsets.UTF_8))
+        val temporary = File(file.parentFile, "$FILE_NAME.tmp")
+        temporary.writeBytes(encoded)
+        if (!temporary.renameTo(file)) {
+            file.writeBytes(encoded)
+            temporary.delete()
         }
     }
 
@@ -69,7 +118,9 @@ class SecretStore(context: Context) {
     }
 
     private fun decrypt(payload: ByteArray): ByteArray {
+        if (payload.size < 2) throw IllegalArgumentException("empty")
         val ivLength = payload[0].toInt() and 0xff
+        if (ivLength <= 0 || payload.size < 1 + ivLength + 1) throw IllegalArgumentException("short")
         val iv = payload.copyOfRange(1, 1 + ivLength)
         val cipherText = payload.copyOfRange(1 + ivLength, payload.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
@@ -85,33 +136,12 @@ class SecretStore(context: Context) {
         val deepSeekApiKey: String = "",
         val deepSeekModel: String = DEFAULT_MODEL,
         val googleClientId: String = "",
-        val googleClientSecret: String = "",
     ) {
         fun normalized(): Secrets = copy(
             deepSeekApiKey = deepSeekApiKey.trim(),
             deepSeekModel = deepSeekModel.trim().ifBlank { DEFAULT_MODEL },
             googleClientId = googleClientId.trim(),
-            googleClientSecret = googleClientSecret.trim(),
         )
-
-        fun toJson(): String = JSONObject()
-            .put(JSON_API_KEY, deepSeekApiKey)
-            .put(JSON_MODEL, deepSeekModel)
-            .put(JSON_CLIENT_ID, googleClientId)
-            .put(JSON_CLIENT_SECRET, googleClientSecret)
-            .toString()
-
-        companion object {
-            fun fromJson(raw: String): Secrets {
-                val json = JSONObject(raw)
-                return Secrets(
-                    deepSeekApiKey = json.optString(JSON_API_KEY),
-                    deepSeekModel = json.optString(JSON_MODEL).ifBlank { DEFAULT_MODEL },
-                    googleClientId = json.optString(JSON_CLIENT_ID),
-                    googleClientSecret = json.optString(JSON_CLIENT_SECRET),
-                ).normalized()
-            }
-        }
     }
 
     companion object {
@@ -122,9 +152,38 @@ class SecretStore(context: Context) {
         private const val FILE_NAME = "secrets.bin"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_BITS = 128
-        private const val JSON_API_KEY = "deepSeekApiKey"
-        private const val JSON_MODEL = "deepSeekModel"
-        private const val JSON_CLIENT_ID = "googleClientId"
-        private const val JSON_CLIENT_SECRET = "googleClientSecret"
+        private val gates = HashMap<String, Any>()
+
+        private fun gateFor(path: String): Any = synchronized(gates) {
+            gates.getOrPut(path) { Any() }
+        }
     }
+}
+
+sealed interface SecretRead {
+    data class Ok(val secrets: SecretStore.Secrets) : SecretRead
+    data object Missing : SecretRead
+    data class Unreadable(val cause: Exception) : SecretRead
+}
+
+sealed interface AccountRead {
+    data class Ok(val accounts: List<AccountRecord>) : AccountRead
+    data object Missing : AccountRead
+    data class Unreadable(val cause: Exception) : AccountRead
+}
+
+private sealed interface Loaded {
+    data class Ok(val document: SecretDocument) : Loaded
+    data object Missing : Loaded
+    data class Unreadable(val cause: Exception) : Loaded
+}
+
+/** 内容坏了才删文件。磁盘错误留下来，取消必须原样抛出。 */
+private fun Exception.isCorrupt(): Boolean = when (this) {
+    is GeneralSecurityException,
+    is SerializationException,
+    is IllegalArgumentException,
+    is IndexOutOfBoundsException,
+    -> true
+    else -> false
 }

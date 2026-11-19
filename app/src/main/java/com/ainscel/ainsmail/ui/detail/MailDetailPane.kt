@@ -7,58 +7,42 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ainscel.ainsmail.R
-import com.ainscel.ainsmail.model.Mail
-import com.ainscel.ainsmail.model.formatMailTime
+import com.ainscel.ainsmail.ui.mailbox.DetailReading
+import com.ainscel.ainsmail.ui.mailbox.MailDetailUi
 import com.ainscel.ainsmail.ui.shell.LocalDetailFullscreen
-import com.ainscel.ainsmail.ui.shell.LocalDetailHandlesBack
 import com.ainscel.ainsmail.ui.shell.MailCapsuleHeight
 import com.ainscel.ainsmail.ui.shell.MailChromeInset
+import com.ainscel.ainsmail.ui.shell.MailRoundButton
+import com.ainscel.ainsmail.ui.shell.SplitFullscreenButton
 import com.ainscel.ainsmail.ui.shell.holdWidthUntilSettled
-import com.ainscel.ainsmail.ui.shell.horizontalDragOrScroll
 
 private val DetailActionGap = 8.dp
 
 @Composable
 fun MailDetailPane(
-    mail: Mail?,
-    accountName: String,
-    onClose: () -> Unit,
+    detail: MailDetailUi?,
     onOriginalLayout: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val handlesBack = LocalDetailHandlesBack.current
     val fullscreen = LocalDetailFullscreen.current
-    Box(
-        modifier
-            .fillMaxSize()
-            .horizontalDragOrScroll(
-                excludeStartEdge = handlesBack,
-                excludeEndEdge = true,
-                onDelta = {},
-                onFinish = { onClose() },
-            ),
-    ) {
-        if (mail == null) {
+    Box(modifier.fillMaxSize()) {
+        if (detail == null) {
             Box(
                 Modifier
                     .holdWidthUntilSettled()
@@ -72,32 +56,45 @@ fun MailDetailPane(
             }
             return@Box
         }
-        Column(
-            Modifier
-                .holdWidthUntilSettled()
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-        ) {
-            Column(Modifier.padding(end = if (fullscreen != null) MailCapsuleHeight else 0.dp)) {
-                Text(text = mail.subject, style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = mail.fromName,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = "$accountName · ${formatMailTime(mail.timeMillis)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // 只让正文文字进入选择。右下角按钮和全屏按钮在这层外面，长按它们不会出复制菜单。
+        SelectionContainer(Modifier.fillMaxSize()) {
+            Column(
+                Modifier
+                    .holdWidthUntilSettled()
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+            ) {
+                Column(Modifier.padding(end = if (fullscreen != null) MailCapsuleHeight else 0.dp)) {
+                    Text(text = detail.subject, style = MaterialTheme.typography.headlineSmall)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = detail.fromName,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = detail.metaLine,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                when (val reading = detail.reading) {
+                    DetailReading.Waiting -> Text(
+                        text = stringResource(R.string.detail_body_waiting),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    is DetailReading.Markdown -> Text(
+                        text = reading.text,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+                // 给右下角三颗圆形按钮留出空档，正文滚到底时不会被挡住。
+                Spacer(
+                    Modifier.height(MailCapsuleHeight * 3 + DetailActionGap * 2 + MailChromeInset + 8.dp),
                 )
             }
-            Spacer(Modifier.height(16.dp))
-            Text(text = mail.body, style = MaterialTheme.typography.bodyLarge)
-            // 给右下角三颗圆形按钮留出空档，正文滚到底时不会被挡住。
-            Spacer(
-                Modifier.height(MailCapsuleHeight * 3 + DetailActionGap * 2 + MailChromeInset + 8.dp),
-            )
         }
         SplitFullscreenButton(
             modifier = Modifier
@@ -112,58 +109,20 @@ fun MailDetailPane(
             verticalArrangement = Arrangement.spacedBy(DetailActionGap),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            RoundMailButton(
+            MailRoundButton(
                 icon = MailIcons.OpenInNew,
                 description = stringResource(R.string.detail_original),
                 onClick = onOriginalLayout,
             )
-            RoundMailButton(
+            MailRoundButton(
                 icon = Icons.Filled.Delete,
                 description = stringResource(R.string.list_delete),
                 onClick = onDelete,
             )
-            RoundMailButton(
+            MailRoundButton(
                 icon = Icons.Filled.Edit,
                 description = stringResource(R.string.detail_edit),
                 onClick = onEdit,
-            )
-        }
-    }
-}
-
-/** 宽屏右栏右上角的全屏按钮。没有分栏时不显示。 */
-@Composable
-fun SplitFullscreenButton(modifier: Modifier = Modifier) {
-    val fullscreen = LocalDetailFullscreen.current ?: return
-    RoundMailButton(
-        icon = if (fullscreen.active) MailIcons.FullscreenExit else MailIcons.Fullscreen,
-        description = stringResource(
-            if (fullscreen.active) R.string.detail_exit_fullscreen else R.string.detail_fullscreen,
-        ),
-        onClick = fullscreen.toggle,
-        modifier = modifier,
-    )
-}
-
-@Composable
-private fun RoundMailButton(
-    icon: ImageVector,
-    description: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        onClick = onClick,
-        modifier = modifier.size(MailCapsuleHeight),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shadowElevation = 2.dp,
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = description,
-                tint = MaterialTheme.colorScheme.onSurface,
             )
         }
     }

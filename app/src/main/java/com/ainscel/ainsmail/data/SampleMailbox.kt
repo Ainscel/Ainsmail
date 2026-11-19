@@ -1,15 +1,31 @@
 package com.ainscel.ainsmail.data
 
 import com.ainscel.ainsmail.model.Account
-import com.ainscel.ainsmail.model.Folder
 import com.ainscel.ainsmail.model.Mail
-import com.ainscel.ainsmail.model.MailTag
 import com.ainscel.ainsmail.model.MailType
+import com.ainscel.ainsmail.model.Provider
+import com.ainscel.ainsmail.model.RemoteFolder
+import com.ainscel.ainsmail.model.TagCatalog
 import com.ainscel.ainsmail.model.TagPool
+import com.ainscel.ainsmail.model.TagWord
 
 val SampleAccounts = listOf(
-    Account(id = "gmail", name = "Ainscel", address = "ainscel@gmail.com"),
-    Account(id = "qq", name = "工作", address = "work@qq.com"),
+    Account(id = "a1", name = "Ainscel", address = "ainscel@gmail.com", provider = Provider.Gmail),
+    Account(id = "a2", name = "工作", address = "work@qq.com", provider = Provider.Qq),
+)
+
+/** 重点的活跃池带上需求里的起点。其余词来自下面的假邮件。 */
+fun sampleCatalog(): TagCatalog = TagCatalog(
+    listOf(
+        TagWord("同事", MailType.Important, TagPool.Active),
+        TagWord("公司", MailType.Important, TagPool.Active),
+        TagWord("AI", MailType.Important, TagPool.Active),
+        TagWord("纪要", MailType.Important, TagPool.Pending),
+        TagWord("登录", MailType.Verify, TagPool.Pending),
+        TagWord("安全", MailType.Notice, TagPool.Active),
+        TagWord("账单", MailType.Notice, TagPool.Stale),
+        TagWord("航司", MailType.Promo, TagPool.Active),
+    ),
 )
 
 fun sampleMails(now: Long): List<Mail> {
@@ -17,7 +33,7 @@ fun sampleMails(now: Long): List<Mail> {
     return listOf(
         mail(
             id = "m1",
-            accountId = "gmail",
+            accountId = "a1",
             from = "林知夏",
             subject = "下午的方案你看一下，有两处口径要改",
             preview = "附件里是今早改过的一版。第三节的数字和上周会上说的不一致，你先看结论，我把对比写在第二段。",
@@ -25,14 +41,11 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(18),
             unread = true,
             type = MailType.Important,
-            tags = listOf(
-                MailTag("同事", TagPool.Active, MailType.Important),
-                MailTag("公司", TagPool.Active, MailType.Important),
-            ),
+            tagNames = listOf("同事", "公司"),
         ),
         mail(
             id = "m2",
-            accountId = "qq",
+            accountId = "a2",
             from = "验证码",
             subject = "你的登录验证码是 483921",
             preview = "验证码 10 分钟内有效。如果不是你本人操作，请忽略这封邮件。",
@@ -40,11 +53,11 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(46),
             unread = true,
             type = MailType.Verify,
-            tags = listOf(MailTag("登录", TagPool.Pending, MailType.Verify)),
+            tagNames = listOf("登录"),
         ),
         mail(
             id = "m3",
-            accountId = "gmail",
+            accountId = "a1",
             from = "云服务账单",
             subject = "11 月账单已生成",
             preview = "本期金额 128.40。付款日是 11 月 20 日，明细可以在控制台查看。",
@@ -52,11 +65,11 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(180),
             unread = false,
             type = MailType.Notice,
-            tags = listOf(MailTag("账单", TagPool.Stale, MailType.Notice)),
+            tagNames = listOf("账单"),
         ),
         mail(
             id = "m4",
-            accountId = "qq",
+            accountId = "a2",
             from = "国际航空公司会员中心",
             subject = "会员日机票折扣延长到这个周日，部分航线还有升舱券可以领取",
             preview = "本周会员日的折扣延长到周日 23:59。亚太航线另有升舱券，数量有限，打开邮件里的活动页可以查看剩余。",
@@ -64,11 +77,11 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 26),
             unread = true,
             type = MailType.Promo,
-            tags = listOf(MailTag("航司", TagPool.Active, MailType.Promo)),
+            tagNames = listOf("航司"),
         ),
         mail(
             id = "m5",
-            accountId = "gmail",
+            accountId = "a1",
             from = "安全提醒",
             subject = "你的账号在新设备上登录",
             preview = "地点显示为上海。如果是你本人，可以忽略。如果不是，请马上修改密码。",
@@ -76,11 +89,11 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 30),
             unread = false,
             type = MailType.Notice,
-            tags = listOf(MailTag("安全", TagPool.Active, MailType.Notice)),
+            tagNames = listOf("安全"),
         ),
         mail(
             id = "m6",
-            accountId = "qq",
+            accountId = "a2",
             from = "未知发件人",
             subject = "领取你的补贴",
             preview = "点击链接填写银行卡即可到账。这是一封用来占位的垃圾邮件。",
@@ -88,11 +101,10 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 24 * 3),
             unread = false,
             type = MailType.Spam,
-            tags = emptyList(),
         ),
         mail(
             id = "m7",
-            accountId = "gmail",
+            accountId = "a1",
             from = "DeepSeek",
             subject = "模型用量提醒",
             preview = "这个月的接口调用量已经到了你设置的提醒线。可以在控制台调整，也可以什么都不做。",
@@ -100,11 +112,11 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 24 * 2),
             unread = true,
             type = MailType.Important,
-            tags = listOf(MailTag("AI", TagPool.Active, MailType.Important)),
+            tagNames = listOf("AI"),
         ),
         mail(
             id = "m8",
-            accountId = "qq",
+            accountId = "a2",
             from = "周会纪要",
             subject = "周一例会纪要",
             preview = "决定了两件事：骨架先用假邮件，账号接入放在列表能滑之后。",
@@ -112,15 +124,11 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 24 * 4),
             unread = false,
             type = MailType.Important,
-            tags = listOf(
-                MailTag("公司", TagPool.Active, MailType.Important),
-                MailTag("同事", TagPool.Active, MailType.Important),
-                MailTag("纪要", TagPool.Pending, MailType.Important),
-            ),
+            tagNames = listOf("公司", "同事", "纪要"),
         ),
         mail(
             id = "m9",
-            accountId = "gmail",
+            accountId = "a1",
             from = "书店",
             subject = "你关注的书到货了",
             preview = "库存只剩三本。这封信还没分类，列表上会看到「分类中」。",
@@ -128,11 +136,10 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(90),
             unread = true,
             type = null,
-            tags = emptyList(),
         ),
         mail(
             id = "m10",
-            accountId = "qq",
+            accountId = "a2",
             from = "自己",
             subject = "出差要带的东西",
             preview = "充电头、备用卡、合同复印件。这封在草稿里。",
@@ -140,12 +147,11 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 5),
             unread = false,
             type = MailType.Important,
-            tags = emptyList(),
-            folder = Folder.Drafts,
+            remoteFolder = RemoteFolder.Drafts,
         ),
         mail(
             id = "m11",
-            accountId = "gmail",
+            accountId = "a1",
             from = "我",
             subject = "回复：下午的方案",
             preview = "第三节我按会上的口径改好了。这封在已发送里。",
@@ -153,12 +159,12 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(12),
             unread = false,
             type = MailType.Important,
-            tags = listOf(MailTag("同事", TagPool.Active, MailType.Important)),
-            folder = Folder.Sent,
+            tagNames = listOf("同事"),
+            remoteFolder = RemoteFolder.Sent,
         ),
         mail(
             id = "m12",
-            accountId = "qq",
+            accountId = "a2",
             from = "旧项目",
             subject = "去年的合同扫描件",
             preview = "这封已经被归档。它不该再出现在收件箱。",
@@ -166,12 +172,12 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 24 * 20),
             unread = false,
             type = MailType.Important,
-            tags = listOf(MailTag("公司", TagPool.Active, MailType.Important)),
-            folder = Folder.Archive,
+            tagNames = listOf("公司"),
+            archived = true,
         ),
         mail(
             id = "m13",
-            accountId = "gmail",
+            accountId = "a1",
             from = "订阅周报",
             subject = "本周只值得看的三篇",
             preview = "这封在已删除里，用来确认板块切换后列表会换掉。",
@@ -179,8 +185,7 @@ fun sampleMails(now: Long): List<Mail> {
             time = ago(60 * 24 * 6),
             unread = false,
             type = MailType.Promo,
-            tags = emptyList(),
-            folder = Folder.Trash,
+            remoteFolder = RemoteFolder.Trash,
         ),
     )
 }
@@ -195,12 +200,14 @@ private fun mail(
     time: Long,
     unread: Boolean,
     type: MailType?,
-    tags: List<MailTag>,
-    folder: Folder = Folder.Inbox,
+    tagNames: List<String> = emptyList(),
+    remoteFolder: RemoteFolder = RemoteFolder.Inbox,
+    archived: Boolean = false,
 ): Mail = Mail(
     id = id,
     accountId = accountId,
-    folder = folder,
+    remoteFolder = remoteFolder,
+    archived = archived,
     fromName = from,
     subject = subject,
     preview = preview,
@@ -208,5 +215,5 @@ private fun mail(
     timeMillis = time,
     unread = unread,
     type = type,
-    tags = tags,
+    tagNames = tagNames,
 )

@@ -1,55 +1,75 @@
 package com.ainscel.ainsmail.model
 
-import androidx.annotation.StringRes
-import androidx.compose.ui.graphics.Color
-import com.ainscel.ainsmail.R
-import java.time.Instant
-import java.time.ZoneId
-
-enum class Folder(@param:StringRes val label: Int) {
-    Inbox(R.string.folder_inbox),
-    Drafts(R.string.folder_drafts),
-    Archive(R.string.folder_archive),
-    Sent(R.string.folder_sent),
-    Trash(R.string.folder_trash),
+/** 第一版只有 QQ（含 Foxmail）和 Gmail。以后加服务商时在这里加一项。 */
+enum class Provider {
+    Qq,
+    Gmail,
 }
 
-enum class MailType(@param:StringRes val label: Int) {
-    Important(R.string.type_important),
-    Verify(R.string.type_verify),
-    Notice(R.string.type_notice),
-    Promo(R.string.type_promo),
-    Spam(R.string.type_spam),
+/** 服务器上的文件夹。存档不是其中一种，它是本机标记。 */
+enum class RemoteFolder {
+    Inbox,
+    Drafts,
+    Sent,
+    Trash,
 }
 
-enum class TagPool(@param:StringRes val label: Int) {
-    Active(R.string.pool_active),
-    Stale(R.string.pool_stale),
-    Pending(R.string.pool_pending),
+/** 左侧遮罩里的板块。和服务器文件夹不是同一件事。 */
+enum class Section {
+    Inbox,
+    Drafts,
+    Archive,
+    Sent,
+    Trash,
 }
 
-enum class ReadFilter(@param:StringRes val label: Int) {
-    Any(R.string.filter_any),
-    Read(R.string.filter_read),
-    Unread(R.string.filter_unread),
+enum class MailType {
+    Important,
+    Verify,
+    Notice,
+    Promo,
+    Spam,
+}
+
+enum class TagPool {
+    Active,
+    Stale,
+    Pending,
+}
+
+enum class ReadFilter {
+    Any,
+    Read,
+    Unread,
+}
+
+/** 全部账号，或某一个账号。自建聚合等有了数据再加第三支。 */
+sealed interface MailboxScope {
+    data object All : MailboxScope
+    data class Account(val id: String) : MailboxScope
 }
 
 data class Account(
     val id: String,
     val name: String,
     val address: String,
+    val provider: Provider,
+    /** 相对 files 目录的头像文件。没有就用显示名画纯色圆。 */
+    val avatarFile: String? = null,
 )
 
-data class MailTag(
-    val name: String,
-    val pool: TagPool,
-    val type: MailType,
-)
-
+/**
+ * 列表和正文暂时共用这一份。
+ * [body] 只给样例信用。真信的正文在文件里，列表只读 [preview]。
+ * [bodyReady] 为真时，文件已经写好。
+ */
 data class Mail(
     val id: String,
     val accountId: String,
-    val folder: Folder,
+    val remoteFolder: RemoteFolder,
+    val archived: Boolean,
+    /** 本机删除。不改 [remoteFolder]，服务器夹要等真正写回再动。 */
+    val locallyDeleted: Boolean = false,
     val fromName: String,
     val subject: String,
     val preview: String,
@@ -57,28 +77,21 @@ data class Mail(
     val timeMillis: Long,
     val unread: Boolean,
     val type: MailType?,
-    val tags: List<MailTag>,
+    val tagNames: List<String>,
+    /** 正文文件已经落盘。样例信不用这个标记。 */
+    val bodyReady: Boolean = false,
 )
 
-/** 名称哈希映射到稳重的色相，避免每一行都是荧光色。 */
-fun avatarColor(name: String): Color {
-    val hue = (name.hashCode() and 0x7fffffff) % 360
-    return Color.hsl(hue.toFloat(), 0.38f, 0.46f)
+fun Mail.inScope(scope: MailboxScope): Boolean = when (scope) {
+    MailboxScope.All -> true
+    is MailboxScope.Account -> accountId == scope.id
 }
 
-/** 中文取前两个字，拉丁字母取前两个字母。空白不算。 */
-fun avatarLabel(name: String): String {
-    val compact = name.filter { !it.isWhitespace() }
-    return compact.take(2)
-}
-
-fun formatMailTime(epochMillis: Long, nowMillis: Long = System.currentTimeMillis()): String {
-    val zone = ZoneId.systemDefault()
-    val moment = Instant.ofEpochMilli(epochMillis).atZone(zone)
-    val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
-    return if (moment.toLocalDate() == today) {
-        "%02d:%02d".format(moment.hour, moment.minute)
-    } else {
-        "${moment.monthValue}月${moment.dayOfMonth}日"
-    }
+/** 存档板块只看收件箱里被本机归档的信。别的文件夹不因为这个标记改归属。 */
+fun Mail.inSection(section: Section): Boolean = when (section) {
+    Section.Inbox -> remoteFolder == RemoteFolder.Inbox && !archived && !locallyDeleted
+    Section.Drafts -> remoteFolder == RemoteFolder.Drafts && !locallyDeleted
+    Section.Archive -> remoteFolder == RemoteFolder.Inbox && archived && !locallyDeleted
+    Section.Sent -> remoteFolder == RemoteFolder.Sent && !locallyDeleted
+    Section.Trash -> locallyDeleted || remoteFolder == RemoteFolder.Trash
 }

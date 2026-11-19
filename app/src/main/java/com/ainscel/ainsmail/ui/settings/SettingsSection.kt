@@ -7,6 +7,8 @@ import kotlinx.serialization.Serializable
 /** 设置栏目。没有内容的栏目先留空页。 */
 @Serializable
 enum class SettingsSection(@StringRes val label: Int) {
+    Accounts(R.string.settings_accounts),
+    Display(R.string.settings_display),
     Notifications(R.string.settings_notifications),
     Privacy(R.string.settings_privacy),
     Secrets(R.string.settings_secrets),

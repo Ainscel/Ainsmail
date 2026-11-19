@@ -6,7 +6,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -16,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,25 +23,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ainscel.ainsmail.R
-import com.ainscel.ainsmail.model.Mail
-import com.ainscel.ainsmail.model.MailTag
-import com.ainscel.ainsmail.model.TagPool
-import com.ainscel.ainsmail.model.avatarColor
-import com.ainscel.ainsmail.model.avatarLabel
-import com.ainscel.ainsmail.model.formatMailTime
+import com.ainscel.ainsmail.ui.mailbox.MailboxIntent
+import com.ainscel.ainsmail.ui.mailbox.MailRowUi
 
 /** 标题比预览更早收束的右间距。 */
 private val SubjectFadeInset = 40.dp
@@ -54,16 +43,17 @@ private val MetaGap = 8.dp
 /** 正文三行之间的行距。 */
 private val LineGap = 2.dp
 
+/**
+ * 点击走同一份 [actions]，参数里不放新 lambda。
+ * 勾选或当前信没落到这一行时，整行可以跳过重组。
+ */
 @Composable
 fun MailRow(
-    mail: Mail,
-    accountName: String?,
+    row: MailRowUi,
     selected: Boolean,
     multiSelect: Boolean,
     checked: Boolean,
-    showClassifying: Boolean,
-    onClick: () -> Unit,
-    onChecked: (Boolean) -> Unit,
+    actions: MailListActions,
     modifier: Modifier = Modifier,
 ) {
     val background = if (selected) {
@@ -71,14 +61,20 @@ fun MailRow(
     } else {
         MaterialTheme.colorScheme.surface
     }
-    val nameWeight = if (mail.unread) FontWeight.SemiBold else FontWeight.Normal
+    val nameWeight = if (row.unread) FontWeight.SemiBold else FontWeight.Normal
     // 外框宽度严格等于当前分界线宽度，以后横滑快捷操作从边缘立刻露出。
     Box(
         modifier
             .fillMaxWidth()
             .clipToBounds()
             .background(background)
-            .clickable(onClick = onClick)
+            .clickable {
+                if (multiSelect) {
+                    actions.onIntent(MailboxIntent.ToggleSelected(row.id))
+                } else {
+                    actions.onOpenMail(row.id)
+                }
+            }
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(
@@ -92,15 +88,21 @@ fun MailRow(
             ) {
                 Checkbox(
                     checked = checked,
-                    onCheckedChange = onChecked,
+                    onCheckedChange = { actions.onIntent(MailboxIntent.ToggleSelected(row.id)) },
                     modifier = Modifier.padding(end = 4.dp),
                 )
             }
-            SenderAvatar(name = mail.fromName, accountName = accountName)
+            SenderAvatar(
+                label = row.senderLabel,
+                hue = row.senderHue,
+                accountName = row.accountName,
+                accountLabel = row.accountLabel,
+                accountHue = row.accountHue,
+                accountAvatar = row.accountAvatar,
+            )
             MailRowTextBlock(
-                mail = mail,
+                row = row,
                 nameWeight = nameWeight,
-                showClassifying = showClassifying,
                 modifier = Modifier
                     .padding(start = 10.dp)
                     .weight(1f),
@@ -115,16 +117,15 @@ fun MailRow(
  */
 @Composable
 private fun MailRowTextBlock(
-    mail: Mail,
+    row: MailRowUi,
     nameWeight: FontWeight,
-    showClassifying: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Layout(
         content = {
             // [0] 发件人
             Text(
-                text = mail.fromName,
+                text = row.fromName,
                 modifier = Modifier.zeroReflowFadeText(fadeWidth = 24.dp),
                 maxLines = 1,
                 softWrap = false,
@@ -134,7 +135,7 @@ private fun MailRowTextBlock(
             )
             // [1] 标签 + 时间（或「分类中」）
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (showClassifying && mail.tags.isEmpty()) {
+                if (row.showClassifying && row.tags.isEmpty()) {
                     Text(
                         text = stringResource(R.string.list_classifying),
                         maxLines = 1,
@@ -143,14 +144,14 @@ private fun MailRowTextBlock(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                mail.tags.asReversed().forEach { tag ->
+                row.tags.forEach { tag ->
                     TagChip(tag)
                 }
-                if (mail.tags.isNotEmpty() || (showClassifying && mail.tags.isEmpty())) {
+                if (row.tags.isNotEmpty() || (row.showClassifying && row.tags.isEmpty())) {
                     Spacer(Modifier.width(MetaGap))
                 }
                 Text(
-                    text = formatMailTime(mail.timeMillis),
+                    text = row.timeLabel,
                     maxLines = 1,
                     softWrap = false,
                     style = MaterialTheme.typography.labelMedium,
@@ -159,7 +160,7 @@ private fun MailRowTextBlock(
             }
             // [2] 标题：比预览更早淡出
             Text(
-                text = mail.subject,
+                text = row.subject,
                 modifier = Modifier.zeroReflowFadeText(
                     rightInset = SubjectFadeInset,
                     fadeWidth = MailTextFadeWidth,
@@ -172,7 +173,7 @@ private fun MailRowTextBlock(
             )
             // [3] 预览
             Text(
-                text = mail.preview,
+                text = row.preview,
                 modifier = Modifier.zeroReflowFadeText(fadeWidth = 28.dp),
                 maxLines = 1,
                 softWrap = false,
@@ -187,7 +188,7 @@ private fun MailRowTextBlock(
                     .size(6.dp)
                     .clip(CircleShape)
                     .background(
-                        if (mail.unread) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        if (row.unread) MaterialTheme.colorScheme.primary else Color.Transparent,
                     ),
             )
         },
@@ -236,72 +237,4 @@ private fun MailRowTextBlock(
             previewPlaceable.placeRelative(0, line3Y)
         }
     }
-}
-
-@Composable
-private fun SenderAvatar(name: String, accountName: String?) {
-    Box(Modifier.size(40.dp)) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(avatarColor(name)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(avatarLabel(name), color = Color.White, fontSize = 14.sp)
-        }
-        if (accountName != null) {
-            Box(
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(16.dp)
-                    .border(1.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                    .clip(CircleShape)
-                    .background(avatarColor(accountName)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = avatarLabel(accountName).take(1),
-                    color = Color.White,
-                    fontSize = 8.sp,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TagChip(tag: MailTag) {
-    val color = when (tag.pool) {
-        TagPool.Active -> Color(0xFF3D6FBF)
-        TagPool.Stale -> Color(0xFF8E97A6)
-        TagPool.Pending -> Color(0xFF3D6FBF)
-    }
-    val shape = RoundedCornerShape(4.dp)
-    val border = if (tag.pool == TagPool.Pending) {
-        Modifier.drawBehind {
-            drawRoundRect(
-                color = color,
-                style = Stroke(
-                    width = 1.dp.toPx(),
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(7f, 5f)),
-                ),
-                cornerRadius = CornerRadius(4.dp.toPx()),
-            )
-        }
-    } else {
-        Modifier.border(1.dp, color, shape)
-    }
-    Text(
-        text = tag.name,
-        modifier = Modifier
-            .padding(start = 4.dp)
-            .then(border)
-            .background(color.copy(alpha = if (tag.pool == TagPool.Pending) 0f else 0.08f), shape)
-            .padding(horizontal = 6.dp, vertical = 1.dp),
-        color = color,
-        style = MaterialTheme.typography.labelSmall,
-        maxLines = 1,
-    )
 }
